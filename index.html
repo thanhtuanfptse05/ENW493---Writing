@@ -26,9 +26,23 @@
                 </summary>
 
                 <div class="form-control" style="margin-top: 16px;">
+                    <label for="modelInput">Model AI (Tùy chọn)</label>
+                    <input type="text" id="modelInput" list="modelSuggestions"
+                        placeholder="VD: gemini-4-hydrogen (để trống = tự dò)" autocomplete="off">
+                    <datalist id="modelSuggestions">
+                        <option value="gemini-4-hydrogen"></option>
+                        <option value="gemini-3.8-flash"></option>
+                        <option value="gemini-3.5-flash"></option>
+                        <option value="gemini-2.5-pro"></option>
+                        <option value="gemini-2.5-flash"></option>
+                    </datalist>
+                    <small>Tự nhập tên model (VD: <code>gemini-4-hydrogen</code>, <code>gemini-3.8-flash</code>). Để trống để hệ thống tự dò.</small>
+                </div>
+
+                <div class="form-control">
                     <label for="apiKeys">API Keys (Mỗi dòng 1 key)</label>
                     <textarea id="apiKeys" placeholder="AIzaSy...&#10;AIzaSy..."></textarea>
-                    <small>Hệ thống tự động dò Model (từ 8.0 lùi về 1.5) và tự động xoay vòng key khi có lỗi.</small>
+                    <small>Hệ thống tự động xoay vòng key khi có lỗi hoặc hết hạn mức.</small>
                 </div>
             </details>
 

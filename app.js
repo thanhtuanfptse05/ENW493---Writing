@@ -63,6 +63,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Load saved settings
     const savedKeys = localStorage.getItem('apiKeys');
+    const savedModel = localStorage.getItem('customModel');
+    const modelInput = document.getElementById('modelInput');
+    if (modelInput && savedModel) {
+        modelInput.value = savedModel;
+    }
+
     const details = document.getElementById('aiSettingsDetails');
     if (savedKeys) {
         document.getElementById('apiKeys').value = savedKeys;
@@ -198,8 +204,13 @@ function resetTimer() {
 function setupEventListeners() {
     document.getElementById('startTimerBtn').addEventListener('click', toggleTimer);
     document.getElementById('resetTimerBtn').addEventListener('click', resetTimer);
-    
-    // Removed modelSelect event listener
+
+    const modelInput = document.getElementById('modelInput');
+    if (modelInput) {
+        modelInput.addEventListener('input', () => {
+            localStorage.setItem('customModel', normalizeModelName(modelInput.value));
+        });
+    }
 
     document.getElementById('submitBtn').addEventListener('click', gradeEssay);
     document.getElementById('closeResultBtn').addEventListener('click', () => {
@@ -210,7 +221,8 @@ function setupEventListeners() {
 }
 
 const POTENTIAL_MODELS = [
-    // Thế hệ 3.x - mới nhất
+    // Thế hệ 4.x / 3.x - mới nhất
+    "gemini-4-hydrogen",
     "gemini-3.8-flash",
     "gemini-3.7-flash",
     "gemini-3.6-flash",
@@ -232,11 +244,39 @@ const POTENTIAL_MODELS = [
     "gemini-1.5-flash"
 ];
 
+/**
+ * Normalizes a user-entered model identifier by trimming whitespace and surrounding quotes.
+ */
+function normalizeModelName(raw) {
+    return (raw || '').trim().replace(/^["']|["']$/g, '').trim();
+}
+
+/**
+ * Reads, normalizes, and persists the custom model name from the settings input.
+ */
+function getCustomModel() {
+    const modelInput = document.getElementById('modelInput');
+    const model = modelInput ? normalizeModelName(modelInput.value) : '';
+    if (modelInput && modelInput.value !== model) {
+        modelInput.value = model;
+    }
+    localStorage.setItem('customModel', model);
+    return model;
+}
+
+function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[ch]));
+}
+
 function getApiKeys() {
     const keysStr = document.getElementById('apiKeys').value.trim();
     localStorage.setItem('apiKeys', keysStr); // Save keys for next time
-    
-    // Removed selectedModel save here
 
     if (!keysStr) return [];
     return keysStr.split('\n').map(k => k.trim()).filter(k => k.length > 0);
@@ -302,6 +342,114 @@ TRẢ VỀ KẾT QUẢ BẰNG MARKDOWN THEO ĐÚNG TRÌNH TỰ SAU, KHÔNG BỎ 
 LƯU Ý: Không bao giờ thay đổi đề bài gốc. Nếu bài viết dưới 100 từ hoặc lạc đề hoàn toàn, cho điểm thấp và cảnh báo rõ.`;
 
 
+/**
+ * Extracts text from a /v1beta/interactions JSON response.
+ */
+function extractInteractionsText(data) {
+    if (typeof data?.output_text === 'string' && data.output_text.trim()) {
+        return data.output_text;
+    }
+    if (Array.isArray(data?.outputs)) {
+        const text = data.outputs
+            .filter(item => item && (item.type === 'text' || typeof item.text === 'string'))
+            .map(item => item.text || '')
+            .join('\n')
+            .trim();
+        if (text) return text;
+    }
+    return '';
+}
+
+async function parseJsonSafe(response) {
+    try {
+        return await response.json();
+    } catch {
+        return {};
+    }
+}
+
+function buildApiError(response, data, fallbackMsg) {
+    return {
+        ok: false,
+        status: data?.error?.code || response.status,
+        errorMsg: data?.error?.message || fallbackMsg
+    };
+}
+
+/**
+ * Calls the standard Gemini generateContent endpoint.
+ */
+async function callGenerateContent(model, key, userPrompt) {
+    const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                system_instruction: { parts: [{ text: systemPrompt }] },
+                contents: [{ parts: [{ text: userPrompt }] }],
+                generationConfig: { temperature: 0.3 }
+            })
+        }
+    );
+
+    const data = await parseJsonSafe(response);
+    if (response.ok) {
+        const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+        return text
+            ? { ok: true, text, endpoint: 'generateContent' }
+            : { ok: false, status: 500, errorMsg: 'API không trả về nội dung phản hồi.' };
+    }
+
+    return buildApiError(response, data, 'Lỗi không xác định từ API');
+}
+
+/**
+ * Calls the Gemini Interactions API endpoint as a fallback for models requiring /v1beta/interactions.
+ */
+async function callInteractionsApi(model, key, userPrompt) {
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': key
+        },
+        body: JSON.stringify({
+            model,
+            system_instruction: systemPrompt,
+            input: userPrompt,
+            generation_config: { temperature: 0.3 }
+        })
+    });
+
+    const data = await parseJsonSafe(response);
+    if (response.ok) {
+        const text = extractInteractionsText(data);
+        return text
+            ? { ok: true, text, endpoint: 'interactions' }
+            : { ok: false, status: 500, errorMsg: 'Interactions API không trả về nội dung văn bản.' };
+    }
+
+    return buildApiError(response, data, 'Lỗi không xác định từ Interactions API');
+}
+
+/**
+ * Requests essay grading for a model, trying generateContent first and falling back to interactions on 404/400.
+ */
+async function requestModelGrading(model, key, userPrompt) {
+    const primaryRes = await callGenerateContent(model, key, userPrompt);
+    if (primaryRes.ok) return primaryRes;
+
+    // Some models (or newer API tiers) only support /v1beta/interactions
+    if (primaryRes.status === 404 || primaryRes.status === 400) {
+        const fallbackRes = await callInteractionsApi(model, key, userPrompt);
+        if (fallbackRes.ok) return fallbackRes;
+        if (primaryRes.status === 404) return fallbackRes;
+    }
+
+    return primaryRes;
+}
+
 async function gradeEssay() {
     const keys = getApiKeys();
     if (keys.length === 0) {
@@ -316,12 +464,16 @@ async function gradeEssay() {
     }
 
     const promptText = currentQuestion.content;
-    
-    // Model memory: always try the last working model FIRST, then fallback
-    let workingModel = localStorage.getItem('workingModel');
-    let modelsToTry = workingModel 
-        ? [workingModel, ...POTENTIAL_MODELS.filter(m => m !== workingModel)] 
-        : POTENTIAL_MODELS;
+    const customModel = getCustomModel();
+    const isCustomMode = customModel.length > 0;
+
+    // When custom model is provided, use ONLY that model; otherwise auto-detect from memory + defaults
+    const workingModel = localStorage.getItem('workingModel');
+    const modelsToTry = isCustomMode
+        ? [customModel]
+        : (workingModel
+            ? [workingModel, ...POTENTIAL_MODELS.filter(m => m !== workingModel)]
+            : POTENTIAL_MODELS);
     
     // Show UI loading inline
     const resultSection = document.getElementById('inlineResultSection');
@@ -338,7 +490,7 @@ async function gradeEssay() {
             <div class="spinner"></div>
             <h3>AI đang phân tích bài viết...</h3>
             <p>Quá trình này có thể mất từ 5 - 15 giây.</p>
-            <p><small id="modelIndicator">Đang dò tìm model AI phù hợp...</small></p>
+            <p><small id="modelIndicator">${isCustomMode ? `Đang chuẩn bị model: ${escapeHtml(customModel)}` : 'Đang dò tìm model AI phù hợp...'}</small></p>
         </div>
     `;
 
@@ -364,42 +516,31 @@ Hãy chấm điểm và nhận xét dựa trên System Instructions.`;
         console.log(`Đang thử key thứ ${i + 1}/${keys.length}...`);
         
         for (let m of modelsToTry) {
-            document.getElementById('modelIndicator').innerText = `Đang thử Model: ${m} (Key ${i+1})`;
-            console.log(`Đang thử model: ${m} với key ${i+1}`);
+            document.getElementById('modelIndicator').innerText = `${isCustomMode ? 'Đang gọi' : 'Đang thử'} Model: ${m} (Key ${i + 1})`;
+            console.log(`Đang thử model: ${m} với key ${i + 1}`);
             try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${key}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        system_instruction: { parts: [ { text: systemPrompt } ] },
-                        contents: [ { parts: [ { text: userPrompt } ] } ],
-                        generationConfig: { temperature: 0.3 }
-                    })
-                });
+                const res = await requestModelGrading(m, key, userPrompt);
 
-                if (response.ok) {
-                    const data = await response.json();
-                    const aiText = data.candidates[0].content.parts[0].text;
-                    
-                    const finalHtml = marked.parse(aiText) + `<div style="margin-top: 20px; font-size: 0.8rem; color: #6b7280; padding-top: 10px; border-top: 1px solid #e5e7eb;">Chấm điểm bởi: <strong>${m}</strong></div>`;
-                    localStorage.setItem('workingModel', m); // Save for next time
+                if (res.ok) {
+                    const finalHtml = marked.parse(res.text) + `<div style="margin-top: 20px; font-size: 0.8rem; color: #6b7280; padding-top: 10px; border-top: 1px solid #e5e7eb;">Chấm điểm bởi: <strong>${escapeHtml(m)}</strong></div>`;
+                    if (!isCustomMode) {
+                        localStorage.setItem('workingModel', m);
+                    }
                     content.innerHTML = finalHtml;
                     localStorage.setItem('savedFeedback', finalHtml);
                     localStorage.setItem('savedFeedbackQid', currentQuestion.id);
                     success = true;
                     break keyLoop; // Successfully graded, exit both loops
                 } else {
-                    const errorData = await response.json();
-                    const errorStatus = errorData.error?.code;
-                    errorMsg = errorData.error?.message || 'Lỗi không xác định từ API';
+                    errorMsg = res.errorMsg;
                     console.error(`Model ${m} (Key ${i + 1}) lỗi:`, errorMsg);
                     
-                    if (errorStatus === 404) {
+                    if (res.status === 404) {
                         // Model not found, continue to next model
                         continue;
-                    } else if (errorStatus === 400 || errorStatus === 403 || errorStatus === 429) {
+                    } else if (res.status === 400 || res.status === 403 || res.status === 429) {
                         // Key invalid, quota exceeded, or bad request -> Try next key
-                        break; 
+                        break;
                     }
                 }
             } catch (e) {
@@ -411,16 +552,24 @@ Hãy chấm điểm và nhận xét dựa trên System Instructions.`;
     }
 
     if (!success) {
+        const modelNotice = isCustomMode
+            ? `<p><strong>Model đã chọn:</strong> <code>${escapeHtml(customModel)}</code></p>`
+            : '';
+        const modelFixTip = isCustomMode
+            ? `<li>Kiểm tra lại tên model <code>${escapeHtml(customModel)}</code> xem có gõ đúng không (VD: <code>gemini-4-hydrogen</code>, <code>gemini-3.8-flash</code>), hoặc xóa trống ô Model để hệ thống tự dò.</li>`
+            : '';
         content.innerHTML = `
             <div style="color: #991b1b; padding: 24px; background: #fee2e2; border-radius: 8px; border-left: 4px solid #ef4444;">
                 <h3 style="color: #991b1b; margin-top: 0; margin-bottom: 12px;">
                     <i class="fa-solid fa-triangle-exclamation"></i> Lỗi Chấm Điểm
                 </h3>
                 <p>Không thể kết nối với API bằng các Key được cung cấp.</p>
-                <p><strong>Chi tiết lỗi từ máy chủ:</strong> ${errorMsg}</p>
+                ${modelNotice}
+                <p><strong>Chi tiết lỗi từ máy chủ:</strong> ${escapeHtml(errorMsg)}</p>
                 <hr style="border-color: #fca5a5; margin: 16px 0;">
                 <p><strong>Gợi ý cách khắc phục:</strong></p>
                 <ul style="margin-bottom: 0;">
+                    ${modelFixTip}
                     <li>Vui lòng kiểm tra lại <strong>API Key</strong>. Đảm bảo bạn dán chính xác API Key của Google (thường bắt đầu bằng <code>AIzaSy...</code>).</li>
                     <li>Key bạn nhập có thể không phải là API Key hợp lệ hoặc đã bị khóa/hết hạn mức (Quota).</li>
                 </ul>
