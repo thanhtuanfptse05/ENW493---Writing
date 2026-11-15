@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ENW493c Tuấn và Quân</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="fa-solid fa-graduation-cap"></i>
+                <h2>AI Grader</h2>
+            </div>
+
+            <details id="aiSettingsDetails" class="settings-group">
+                <summary>
+                    <h3><i class="fa-solid fa-gear"></i> Cài đặt AI</h3>
+                </summary>
+
+                <div class="form-control" style="margin-top: 16px;">
+                    <label for="apiKeys">API Keys (Mỗi dòng 1 key)</label>
+                    <textarea id="apiKeys" placeholder="AIzaSy...&#10;AIzaSy..."></textarea>
+                    <small>Hệ thống tự động dò Model (từ 8.0 lùi về 1.5) và tự động xoay vòng key khi có lỗi.</small>
+                </div>
+            </details>
+
+
+            <div class="question-list">
+                <h3><i class="fa-solid fa-list"></i> Danh sách Đề bài</h3>
+                <ul id="qList">
+                    <!-- Javascript will populate this -->
+                </ul>
+                <button id="knowledgeBtn" class="btn-primary"
+                    style="width: 100%; justify-content: center; margin-top: 24px; padding: 12px; background: linear-gradient(135deg, #10b981, #059669); box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.4);"><i
+                        class="fa-solid fa-book-open"></i> Sổ tay Kiến thức</button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-header">
+                <div class="timer">
+                    <i class="fa-regular fa-clock"></i> <span id="timeDisplay">60:00</span>
+                    <button id="startTimerBtn" class="btn-icon" title="Bắt đầu tính giờ"><i
+                            class="fa-solid fa-play"></i></button>
+                    <button id="resetTimerBtn" class="btn-icon" title="Cài lại"><i
+                            class="fa-solid fa-rotate-right"></i></button>
+                </div>
+                <button id="submitBtn" class="btn-primary">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Chấm Điểm AI
+                </button>
+            </header>
+
+            <div class="workspace">
+                <!-- Prompt Area -->
+                <div class="prompt-section">
+                    <h2 id="currentQTitle">Đề bài</h2>
+                    <div id="promptContent" class="prompt-text">
+                        Vui lòng chọn một đề bài bên cột trái.
+                    </div>
+                </div>
+
+                <!-- Editor Area -->
+                <div class="editor-section">
+                    <div class="editor-toolbar-container">
+                        <!-- Quill Toolbar is automatically injected here -->
+                    </div>
+                    <div id="editor"></div>
+                    <div class="editor-footer">
+                        <span id="wordCount">0 từ</span>
+                    </div>
+                </div>
+                <!-- Inline Result Area -->
+                <div id="inlineResultSection" class="prompt-section"
+                    style="display: none; margin-top: 10px; margin-bottom: 24px;">
+                    <h2
+                        style="color: var(--primary-color); display: flex; align-items: center; gap: 8px; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 16px;">
+                        <span><i class="fa-solid fa-square-poll-vertical"></i> Kết quả Đánh giá</span>
+                        <button id="closeResultBtn" class="btn-icon" style="font-size: 1.2rem; cursor: pointer;"><i
+                                class="fa-solid fa-xmark"></i></button>
+                    </h2>
+                    <div id="resultContent" class="result-content" style="font-size: 1rem; line-height: 1.7;">
+                        <!-- Loading or Markdown content -->
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Knowledge Modal -->
+        <div id="knowledgeModal" class="modal-overlay">
+            <div class="modal-content" style="width: 1000px; max-width: 95vw; height: 90vh;">
+                <div class="modal-header">
+                    <h2><i class="fa-solid fa-book-open"></i> BỘ KHUNG CHI TIẾT / DETAILED ESSAY TEMPLATES</h2>
+                    <button id="closeKnowledgeBtn" class="btn-icon"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="modal-body result-content" id="knowledgeBody">
+                    <!-- Markdown Content will be injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="app.js"></script>
+    <script src="knowledge.js"></script>
+</body>
+
+</html>
