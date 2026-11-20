@@ -147,38 +147,68 @@ function buildApiError(response, data, fallbackMsg) {
     };
 }
 
+const API_TIMEOUT_MS = 45000;
+
+function isHydrogenModel(model) {
+    const m = (model || '').toLowerCase();
+    return m.includes('hydrogen') || m.startsWith('gemini-4');
+}
+
+async function fetchWithTimeout(url, options, timeoutMs = API_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timerId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } catch (err) {
+        if (err && err.name === 'AbortError') {
+            throw new Error(`Hết thời gian chờ (${Math.round(timeoutMs / 1000)}s). Model phản hồi quá lâu hoặc kết nối bị nghẽn.`);
+        }
+        throw err;
+    } finally {
+        clearTimeout(timerId);
+    }
+}
+
 function extractInteractionsText(data) {
     if (typeof data?.output_text === 'string' && data.output_text.trim()) {
         return data.output_text;
     }
     if (Array.isArray(data?.outputs)) {
-        const text = data.outputs
-            .filter(item => item && (item.type === 'text' || typeof item.text === 'string'))
-            .map(item => item.text || '')
-            .join('\n')
-            .trim();
+        const textItems = data.outputs.filter(item => item && item.type === 'text' && typeof item.text === 'string');
+        const candidates = textItems.length > 0
+            ? textItems
+            : data.outputs.filter(item => item && item.type !== 'thought' && typeof item.text === 'string');
+        const text = candidates.map(item => item.text || '').join('\n').trim();
         if (text) return text;
     }
     return '';
 }
 
 async function callGenerateContent(model, key, systemPrompt, userPrompt, temperature = 0.3) {
-    const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
+    const generationConfig = { temperature };
+    if (isHydrogenModel(model)) {
+        generationConfig.thinkingConfig = { thinkingLevel: 'low' };
+    }
+
+    const response = await fetchWithTimeout(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
         {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': key
+            },
             body: JSON.stringify({
                 system_instruction: { parts: [{ text: systemPrompt }] },
                 contents: [{ parts: [{ text: userPrompt }] }],
-                generationConfig: { temperature }
+                generationConfig
             })
         }
     );
 
     const data = await parseJsonSafe(response);
     if (response.ok) {
-        const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+        const text = data?.candidates?.[0]?.content?.parts?.filter(p => !p.thought).map(p => p.text || '').join('') || '';
         return text
             ? { ok: true, text, endpoint: 'generateContent' }
             : { ok: false, status: 500, errorMsg: 'API không trả về nội dung phản hồi.' };
@@ -188,7 +218,12 @@ async function callGenerateContent(model, key, systemPrompt, userPrompt, tempera
 }
 
 async function callInteractionsApi(model, key, systemPrompt, userPrompt, temperature = 0.3) {
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+    const generationConfig = { temperature };
+    if (isHydrogenModel(model)) {
+        generationConfig.thinking_level = 'low';
+    }
+
+    const response = await fetchWithTimeout('https://generativelanguage.googleapis.com/v1beta/interactions', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -198,7 +233,7 @@ async function callInteractionsApi(model, key, systemPrompt, userPrompt, tempera
             model,
             system_instruction: systemPrompt,
             input: userPrompt,
-            generation_config: { temperature }
+            generation_config: generationConfig
         })
     });
 
@@ -213,11 +248,14 @@ async function callInteractionsApi(model, key, systemPrompt, userPrompt, tempera
     return buildApiError(response, data, 'Lỗi không xác định từ Interactions API');
 }
 
-async function requestModelCall(model, key, systemPrompt, userPrompt, temperature = 0.3) {
+async function requestModelCall(model, key, systemPrompt, userPrompt, temperature = 0.3, onStatusUpdate, keyIndex = 0) {
     const primaryRes = await callGenerateContent(model, key, systemPrompt, userPrompt, temperature);
     if (primaryRes.ok) return primaryRes;
 
-    if (primaryRes.status === 404 || primaryRes.status === 400) {
+    if (primaryRes.status === 404 || primaryRes.status === 400 || primaryRes.status === 401) {
+        if (typeof onStatusUpdate === 'function') {
+            onStatusUpdate(`Đang thử Interactions API cho ${model} (Key ${keyIndex + 1})...`);
+        }
         const fallbackRes = await callInteractionsApi(model, key, systemPrompt, userPrompt, temperature);
         if (fallbackRes.ok) return fallbackRes;
         if (primaryRes.status === 404) return fallbackRes;
@@ -261,7 +299,7 @@ async function callGeminiWithRotation({ systemPrompt, userPrompt, temperature = 
                 onStatusUpdate(`${isCustomMode ? 'Đang gọi' : 'Đang thử'} Model: ${m} (Key ${i + 1})`);
             }
             try {
-                const res = await requestModelCall(m, key, systemPrompt, userPrompt, temperature);
+                const res = await requestModelCall(m, key, systemPrompt, userPrompt, temperature, onStatusUpdate, i);
                 if (res.ok) {
                     if (!isCustomMode) {
                         localStorage.setItem('workingModel', m);
@@ -277,11 +315,11 @@ async function callGeminiWithRotation({ systemPrompt, userPrompt, temperature = 
                 errorMsg = res.errorMsg;
                 if (res.status === 404) {
                     continue;
-                } else if (res.status === 400 || res.status === 403 || res.status === 429) {
+                } else if (res.status === 400 || res.status === 401 || res.status === 403 || res.status === 429) {
                     break;
                 }
             } catch (e) {
-                errorMsg = `Lỗi kết nối mạng: ${e.message}`;
+                errorMsg = e.message || 'Lỗi kết nối mạng';
                 break;
             }
         }
