@@ -297,11 +297,11 @@ async function callGeminiWithRotation({ systemPrompt, userPrompt, temperature = 
 }
 
 /**
- * Parses the overall score out of 10 from the grader's Markdown table.
+ * Parses a score out of 10 from full-essay or paragraph grader Markdown output.
  */
 function parseScoreFromMarkdown(markdown) {
     if (!markdown) return null;
-    const totalMatch = markdown.match(/TỔNG ĐIỂM[^\n]*?(\d+(?:[.,]\d+)?)\s*\/\s*10/i);
+    const totalMatch = markdown.match(/(?:TỔNG ĐIỂM|ĐIỂM ĐOẠN)[^\n]*?(\d+(?:[.,]\d+)?)\s*\/\s*10/i);
     if (totalMatch) {
         const val = parseFloat(totalMatch[1].replace(',', '.'));
         if (!Number.isNaN(val) && val >= 0 && val <= 10) return val;
@@ -312,6 +312,76 @@ function parseScoreFromMarkdown(markdown) {
         if (!Number.isNaN(val) && val >= 0 && val <= 10) return val;
     }
     return null;
+}
+
+const PARAGRAPH_RUBRICS = {
+    intro: {
+        label: 'Mở bài (Introduction)',
+        targetWords: '40–60 từ (2–3 câu)',
+        criteria: `- Đã paraphrase lại đề bài bằng từ ngữ tự nhiên (không chép nguyên văn đề)?
+- Đã có Thesis Statement rõ ràng, khớp với Khung của đề (VD: nêu Cause+Solution, trả lời 2 vế, nêu lập trường Agree/Disagree, hoặc giới thiệu Discuss Both Views + Opinion)?`
+    },
+    body1: {
+        label: 'Thân bài 1 (Body Paragraph 1)',
+        targetWords: '120–175 từ',
+        criteria: `- Đi đúng trọng tâm phần 1 của đề bài (Causes / Vế 1 / View 1 / Advantages)?
+- Cấu trúc PEEL mạch lạc: có câu chủ đề (Point), giải thích (Explain), ví dụ (Example) và câu chốt/liên kết (Link)?`
+    },
+    body2: {
+        label: 'Thân bài 2 (Body Paragraph 2)',
+        targetWords: '120–175 từ',
+        criteria: `- Đi đúng trọng tâm phần 2 của đề bài (Solutions / Vế 2 / View 2 / Disadvantages + Phản biện Outweigh nếu là dạng Outweigh)?
+- Cấu trúc PEEL mạch lạc, từ nối chuyển đoạn tự nhiên với Thân bài 1?`
+    },
+    conclusion: {
+        label: 'Kết bài (Conclusion)',
+        targetWords: '35–55 từ (2–3 câu)',
+        criteria: `- Tóm tắt gọn các ý chính của bài bằng cách diễn đạt khác (paraphrase)?
+- KHÔNG đưa thêm luận điểm mới toanh chưa từng xuất hiện ở thân bài?
+- Nếu đề hỏi ý kiến (Agree/Disagree, Discuss+Opinion, Outweigh), đã chốt rõ quan điểm cá nhân?`
+    }
+};
+
+async function gradeParagraphWithAI({ sectionType, question, paragraphText, onStatusUpdate }) {
+    const rubric = PARAGRAPH_RUBRICS[sectionType] || PARAGRAPH_RUBRICS.intro;
+    const systemPrompt = `Bạn là giảng viên chấm ENW493c chuyên nghiệp, tận tâm hỗ trợ sinh viên luyện viết từng đoạn.
+NHIỆM VỤ: Chấm điểm và nhận xét riêng phần **${rubric.label}** (độ dài tham khảo: ${rubric.targetWords}) dựa trên Đề bài và Khung viết (${question.framework} - ${question.frameworkName}).
+
+NGUYÊN TẮC QUAN TRỌNG:
+- Học viên được TỰ DO dùng ý tưởng, lập trường và cách diễn đạt riêng. TUYỆT ĐỐI KHÔNG trừ điểm vì viết khác bài mẫu; chỉ chấm dựa trên việc có đúng yêu cầu đề bài, đúng cấu trúc đoạn, logic, từ vựng và ngữ pháp hay không.
+- Trả về đúng định dạng Markdown gọn, dễ đọc:
+
+### 🎯 ĐIỂM ĐOẠN: X.X / 10
+*(Đánh giá công bằng theo mức độ sinh viên ENW493c: từ 6.0 trở lên là Đạt yêu cầu qua ải)*
+
+**✅ Checklist cấu trúc ${rubric.label}:**
+(Đánh dấu ✅ hoặc ⚠️ kèm nhận xét 1 dòng cho từng tiêu chí sau:)
+${rubric.criteria}
+
+**🔧 Sửa lỗi ngữ pháp & từ vựng (nếu có):**
+- (Liệt kê tối đa 2-3 lỗi quan trọng nhất theo dạng ❌ Sai → ✅ Sửa → 💬 Giải thích ngắn)
+
+**🚀 Phiên bản nâng cấp giữ nguyên ý của bạn (Band 7.5+):**
+> (Viết lại đoạn văn trên mượt mà và học thuật hơn nhưng GIỮ ĐÚNG ý tưởng & lập trường mà học viên vừa viết)`;
+
+    const userPrompt = `Đề bài (${question.title} | Khung ${question.framework}: ${question.frameworkName} | Mục tiêu cả bài: ${question.minWords}-${question.maxWords} từ):
+----------------
+${question.content}
+----------------
+
+Đoạn ${rubric.label} học viên tự viết:
+----------------
+${paragraphText}
+----------------
+
+Hãy chấm điểm và nhận xét theo đúng định dạng.`;
+
+    return callGeminiWithRotation({
+        systemPrompt,
+        userPrompt,
+        temperature: 0.3,
+        onStatusUpdate
+    });
 }
 
 async function gradeEssayWithAI(promptText, essayText, onStatusUpdate) {

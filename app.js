@@ -7,6 +7,15 @@ let timeLeft = 3600; // 60 minutes in seconds
 let draftSaveTimer = null;
 let isRestoringDraft = false;
 
+const APP_SVGS = {
+    play: '<svg class="icon icon-sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>',
+    pause: '<svg class="icon icon-sm" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>',
+    done: '<svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>',
+    working: '<svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>',
+    todo: '<svg class="icon icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle></svg>',
+    spinner: '<svg class="icon icon-sm spin-icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>'
+};
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     initQuill();
@@ -16,7 +25,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     refreshGamificationUI();
 
-    // Load saved AI settings
     const savedKeys = localStorage.getItem('apiKeys');
     const savedModel = localStorage.getItem('customModel');
     const modelInput = document.getElementById('modelInput');
@@ -32,7 +40,6 @@ document.addEventListener('DOMContentLoaded', () => {
         details.setAttribute('open', '');
     }
 
-    // Select first question and default to Quest Mode
     if (QUESTIONS_DATA.length > 0) {
         selectQuestion(QUESTIONS_DATA[0].id);
     }
@@ -86,9 +93,7 @@ function updateWordCount() {
         const minW = currentQuestion.minWords || 350;
         const maxW = currentQuestion.maxWords || 400;
         badge.innerText = `${wordCount} / ${minW}–${maxW} từ`;
-        if (wordCount === 0) {
-            badge.classList.add('wc-low');
-        } else if (wordCount < minW) {
+        if (wordCount === 0 || wordCount < minW) {
             badge.classList.add('wc-low');
         } else if (wordCount <= maxW + 50) {
             badge.classList.add('wc-good');
@@ -145,10 +150,10 @@ window.loadDraftForQuestion = loadDraftForQuestion;
 function initFrameworkFilter() {
     const filterContainer = document.getElementById('frameworkFilter');
     if (!filterContainer) return;
-    filterContainer.querySelectorAll('.filter-chip').forEach(btn => {
+    filterContainer.querySelectorAll('.filter-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             currentFilter = btn.dataset.fw || 'ALL';
-            filterContainer.querySelectorAll('.filter-chip').forEach(b => {
+            filterContainer.querySelectorAll('.filter-btn').forEach(b => {
                 b.classList.toggle('active', b === btn);
             });
             renderQuestionList();
@@ -165,19 +170,25 @@ function renderQuestionList() {
         ? QUESTIONS_DATA
         : QUESTIONS_DATA.filter(q => q.framework === currentFilter);
 
+    const countTag = document.getElementById('questionCountTag');
+    if (countTag) countTag.innerText = `${filtered.length} đề`;
+
     filtered.forEach(q => {
         const li = document.createElement('li');
+        li.className = 'q-card-item';
         li.dataset.id = q.id;
         if (currentQuestion && currentQuestion.id === q.id) {
             li.classList.add('active');
         }
-        const statusInfo = getQuestionStatusIcon(q.id);
+        const statusInfo = getQuestionStatusInfo(q.id);
         li.innerHTML = `
-            <span class="q-item-left">
-                <span class="q-fw-badge fw-${q.framework}">${q.framework}</span>
-                <span class="q-item-title">${escapeHtml(q.title)}</span>
+            <div class="q-meta-left">
+                <span class="fw-pill fw-${q.framework}">${q.framework}</span>
+                <span class="q-title-text">${escapeHtml(q.title)}</span>
+            </div>
+            <span class="badge-status-dot status-${statusInfo.status}" title="${statusInfo.title}">
+                ${APP_SVGS[statusInfo.status]}
             </span>
-            <span class="q-status-icon" title="${statusInfo.status}">${statusInfo.icon}</span>
         `;
         li.onclick = () => selectQuestion(q.id);
         qList.appendChild(li);
@@ -214,18 +225,16 @@ function selectQuestion(id) {
         li.classList.toggle('active', Number(li.dataset.id) === id);
     });
 
-    // Update Exam prompt area
     document.getElementById('currentQTitle').innerText = currentQuestion.title;
     const metaEl = document.getElementById('currentQMeta');
     if (metaEl) {
         metaEl.innerHTML = `
-            <span class="framework-pill fw-${currentQuestion.framework}">Khung ${currentQuestion.framework}: ${escapeHtml(currentQuestion.frameworkName)}</span>
-            <span class="word-target-pill">${currentQuestion.minWords}–${currentQuestion.maxWords} từ</span>
+            <span class="fw-pill fw-${currentQuestion.framework}">Khung ${currentQuestion.framework}: ${escapeHtml(currentQuestion.frameworkName)}</span>
+            <span class="pill-target">${currentQuestion.minWords}–${currentQuestion.maxWords} từ</span>
         `;
     }
     document.getElementById('promptContent').innerText = currentQuestion.content;
 
-    // Load draft & cached feedback for this question
     loadDraftForQuestion(id);
     const savedQid = localStorage.getItem('savedFeedbackQid');
     const savedFeedback = localStorage.getItem('savedFeedback');
@@ -241,7 +250,6 @@ function selectQuestion(id) {
     const hintBox = document.getElementById('aiHintBox');
     if (hintBox) hintBox.style.display = 'none';
 
-    // Update Quest Mode & Hint Drawer
     QuestMode.initForQuestion(currentQuestion);
     renderHintDrawer();
 }
@@ -257,26 +265,26 @@ function renderHintDrawer() {
     const b2Items = (q.quickHints?.body2Vi || []).map(v => `<li>${escapeHtml(v)}</li>`).join('');
 
     body.innerHTML = `
-        <div class="drawer-section">
-            <span class="framework-pill fw-${q.framework}">Khung ${q.framework}: ${escapeHtml(q.frameworkName)}</span>
-            <p class="drawer-desc">${escapeHtml(fwInfo.vi || '')}</p>
+        <div class="drawer-card">
+            <span class="fw-pill fw-${q.framework}">Khung ${q.framework}: ${escapeHtml(q.frameworkName)}</span>
+            <p class="mt-8" style="color: var(--text-muted); font-size: 0.82rem;">${escapeHtml(fwInfo.vi || '')}</p>
             ${q.quickHints?.stance ? `<div class="drawer-stance"><strong>🧭 Chiến thuật:</strong> ${escapeHtml(q.quickHints.stance)}</div>` : ''}
         </div>
-        <div class="drawer-section">
-            <h4>📝 Thân bài 1 (Ý chính)</h4>
+        <div class="drawer-card">
+            <h4>Thân bài 1 (Ý chính)</h4>
             <ul>${b1Items}</ul>
         </div>
-        <div class="drawer-section">
-            <h4>📝 Thân bài 2 (Ý chính)</h4>
+        <div class="drawer-card">
+            <h4>Thân bài 2 (Ý chính)</h4>
             <ul>${b2Items}</ul>
         </div>
-        <div class="drawer-section">
-            <h4>💎 Từ vựng ăn điểm</h4>
-            <ul class="vocab-list">${vocabItems}</ul>
+        <div class="drawer-card">
+            <h4>Từ vựng ăn điểm</h4>
+            <ul>${vocabItems}</ul>
         </div>
-        <div class="drawer-section">
-            <h4>🔗 Từ nối nhanh</h4>
-            <p class="linking-mini">
+        <div class="drawer-card">
+            <h4>Từ nối khuyên dùng</h4>
+            <p style="font-size: 0.82rem; line-height: 1.6;">
                 <strong>Mở ý:</strong> One major reason is... / Firstly,<br>
                 <strong>Giải thích:</strong> This is because... / Consequently,<br>
                 <strong>Ví dụ:</strong> For instance, ... / For example,<br>
@@ -296,10 +304,10 @@ function switchAppMode(mode) {
 
     if (questBtn) questBtn.classList.toggle('active', currentMode === 'quest');
     if (examBtn) examBtn.classList.toggle('active', currentMode === 'exam');
-    if (questBox) questBox.style.display = currentMode === 'quest' ? 'block' : 'none';
+    if (questBox) questBox.style.display = currentMode === 'quest' ? 'flex' : 'none';
     if (examBox) examBox.style.display = currentMode === 'exam' ? 'flex' : 'none';
 
-    const workspace = document.querySelector('.workspace');
+    const workspace = document.querySelector('.workspace-area');
     if (workspace) workspace.scrollTop = 0;
 }
 window.switchAppMode = switchAppMode;
@@ -316,16 +324,12 @@ function updateTimerDisplay() {
 
 function toggleTimer() {
     const btn = document.getElementById('startTimerBtn');
-    const icon = btn.querySelector('i');
-
     if (timerInterval) {
         clearInterval(timerInterval);
         timerInterval = null;
-        icon.classList.remove('fa-pause');
-        icon.classList.add('fa-play');
+        btn.innerHTML = APP_SVGS.play;
     } else {
-        icon.classList.remove('fa-play');
-        icon.classList.add('fa-pause');
+        btn.innerHTML = APP_SVGS.pause;
         timerInterval = setInterval(() => {
             if (timeLeft > 0) {
                 timeLeft--;
@@ -334,8 +338,7 @@ function toggleTimer() {
                 clearInterval(timerInterval);
                 timerInterval = null;
                 alert('Hết giờ làm bài!');
-                icon.classList.remove('fa-pause');
-                icon.classList.add('fa-play');
+                btn.innerHTML = APP_SVGS.play;
             }
         }, 1000);
     }
@@ -345,10 +348,7 @@ function resetTimer() {
     if (timerInterval) {
         clearInterval(timerInterval);
         timerInterval = null;
-        const btn = document.getElementById('startTimerBtn');
-        const icon = btn.querySelector('i');
-        icon.classList.remove('fa-pause');
-        icon.classList.add('fa-play');
+        document.getElementById('startTimerBtn').innerHTML = APP_SVGS.play;
     }
     timeLeft = 3600;
     updateTimerDisplay();
@@ -375,7 +375,6 @@ function setupEventListeners() {
         localStorage.removeItem('savedFeedbackQid');
     });
 
-    // Clear draft button
     document.getElementById('clearDraftBtn').addEventListener('click', () => {
         if (!currentQuestion) return;
         if (quill.getText().trim().length === 0) return;
@@ -390,13 +389,11 @@ function setupEventListeners() {
         renderQuestionList();
     });
 
-    // AI Writing Hint ("Cứu bí ý")
     document.getElementById('aiHintBtn').addEventListener('click', askAiWritingHint);
     document.getElementById('closeAiHintBtn').addEventListener('click', () => {
         document.getElementById('aiHintBox').style.display = 'none';
     });
 
-    // Slide-in Hint Drawer
     const hintDrawer = document.getElementById('hintDrawer');
     document.getElementById('toggleHintDrawerBtn').addEventListener('click', () => {
         const isOpen = hintDrawer.classList.toggle('open');
@@ -412,7 +409,7 @@ async function askAiWritingHint() {
     if (!currentQuestion) return;
     const keys = getApiKeys();
     if (keys.length === 0) {
-        alert('Vui lòng nhập ít nhất một API Key của Gemini ở cột Cài đặt AI (bên trái)!');
+        alert('Vui lòng nhập ít nhất một API Key của Gemini ở mục Cấu hình Gemini AI (bên trái)!');
         document.getElementById('aiSettingsDetails').setAttribute('open', '');
         return;
     }
@@ -423,14 +420,14 @@ async function askAiWritingHint() {
 
     hintBox.style.display = 'block';
     btn.disabled = true;
-    hintContent.innerHTML = `<div class="inline-spinner"><i class="fa-solid fa-spinner fa-spin"></i> AI đang đọc bài viết dở và nghĩ ý tiếp theo...</div>`;
+    hintContent.innerHTML = `<div class="inline-spinner">${APP_SVGS.spinner} AI đang đọc bài viết dở và nghĩ ý tiếp theo...</div>`;
     setTimeout(() => hintBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
 
     const res = await getWritingHintWithAI({
         promptText: currentQuestion.content,
         currentEssay: quill.getText().trim(),
         onStatusUpdate: (msg) => {
-            hintContent.innerHTML = `<div class="inline-spinner"><i class="fa-solid fa-spinner fa-spin"></i> ${escapeHtml(msg)}</div>`;
+            hintContent.innerHTML = `<div class="inline-spinner">${APP_SVGS.spinner} ${escapeHtml(msg)}</div>`;
         }
     });
 
@@ -449,7 +446,7 @@ async function gradeEssay() {
 
     const keys = getApiKeys();
     if (keys.length === 0) {
-        alert('Vui lòng nhập ít nhất một API Key của Gemini ở cột Cài đặt (bên trái)!');
+        alert('Vui lòng nhập ít nhất một API Key của Gemini ở mục Cấu hình Gemini AI (bên trái)!');
         document.getElementById('aiSettingsDetails').setAttribute('open', '');
         return;
     }
@@ -508,7 +505,7 @@ async function gradeEssay() {
 
         const finalHtml = bossBanner
             + marked.parse(res.text)
-            + `<div style="margin-top: 20px; font-size: 0.8rem; color: #6b7280; padding-top: 10px; border-top: 1px solid #e5e7eb;">Chấm điểm bởi: <strong>${escapeHtml(res.model)}</strong></div>`;
+            + `<div style="margin-top: 20px; font-size: 0.8rem; color: var(--text-muted); padding-top: 10px; border-top: 1px solid var(--border-soft);">Chấm điểm bởi: <strong>${escapeHtml(res.model)}</strong></div>`;
 
         content.innerHTML = finalHtml;
         localStorage.setItem('savedFeedback', finalHtml);
@@ -521,19 +518,17 @@ async function gradeEssay() {
             ? `<li>Kiểm tra lại tên model <code>${escapeHtml(res.customModel)}</code> xem có gõ đúng không (VD: <code>gemini-4-hydrogen</code>, <code>gemini-3.8-flash</code>), hoặc xóa trống ô Model để hệ thống tự dò.</li>`
             : '';
         content.innerHTML = `
-            <div style="color: #991b1b; padding: 24px; background: #fee2e2; border-radius: 8px; border-left: 4px solid #ef4444;">
-                <h3 style="color: #991b1b; margin-top: 0; margin-bottom: 12px;">
-                    <i class="fa-solid fa-triangle-exclamation"></i> Lỗi Chấm Điểm
-                </h3>
+            <div class="alert-error" style="padding: 20px;">
+                <h3 style="margin-top: 0; margin-bottom: 10px;">⚠️ Lỗi Chấm Điểm</h3>
                 <p>Không thể kết nối với API bằng các Key được cung cấp.</p>
                 ${modelNotice}
                 <p><strong>Chi tiết lỗi từ máy chủ:</strong> ${escapeHtml(res.errorMsg)}</p>
-                <hr style="border-color: #fca5a5; margin: 16px 0;">
+                <hr style="border-color: var(--rose-border); margin: 14px 0;">
                 <p><strong>Gợi ý cách khắc phục:</strong></p>
-                <ul style="margin-bottom: 0;">
+                <ul style="margin-bottom: 0; padding-left: 20px;">
                     ${modelFixTip}
-                    <li>Vui lòng kiểm tra lại <strong>API Key</strong>. Đảm bảo bạn dán chính xác API Key của Google (thường bắt đầu bằng <code>AIzaSy...</code>).</li>
-                    <li>Key bạn nhập có thể không phải là API Key hợp lệ hoặc đã bị khóa/hết hạn mức (Quota).</li>
+                    <li>Kiểm tra lại <strong>API Key</strong> (đảm bảo copy chính xác Key Gemini).</li>
+                    <li>Key có thể đã hết hạn mức (Quota) hoặc bị vô hiệu hóa.</li>
                 </ul>
             </div>
         `;
