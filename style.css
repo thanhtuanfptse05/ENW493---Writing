@@ -145,19 +145,28 @@ body {
 }
 
 .logo-emblem {
-    width: 42px;
-    height: 42px;
+    width: 46px;
+    height: 46px;
     border-radius: 12px;
-    background: linear-gradient(135deg, #4f46e5, #4338ca);
+    background: #ffffff;
+    border: 1px solid var(--border-soft);
+    padding: 3px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #ffffff;
-    box-shadow: 0 4px 12px var(--primary-glow);
-    transition: transform 0.25s var(--ease-spring);
+    box-shadow: var(--shadow-subtle);
+    flex-shrink: 0;
+    transition: transform 0.25s var(--ease-spring), box-shadow 0.2s ease;
+}
+.brand-logo-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
 }
 .brand-logo:hover .logo-emblem {
     transform: scale(1.05) rotate(-3deg);
+    box-shadow: var(--shadow-card);
 }
 
 .brand-info h1 {
@@ -1263,9 +1272,9 @@ details.warmup-fold[open] summary {
     padding: 14px 16px;
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm);
-    font-family: inherit;
-    font-size: 0.96rem;
-    line-height: 1.75;
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 1.06rem;
+    line-height: 1.8;
     resize: vertical;
     background: var(--bg-canvas);
     color: var(--text-heading);
@@ -1382,7 +1391,41 @@ details.warmup-fold[open] summary {
 .exam-mode-container {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 18px;
+}
+
+.exam-prompt-card {
+    flex-shrink: 0;
+    background: var(--surface-card);
+    padding: 18px 24px 20px;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-subtle);
+    border: 1px solid var(--border-soft);
+    position: relative;
+    overflow: hidden;
+}
+.exam-prompt-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #4338ca, #6366f1);
+}
+.exam-prompt-card h2 {
+    font-size: 1.16rem;
+    font-weight: 800;
+    color: var(--text-heading);
+    margin-top: 6px;
+}
+.exam-prompt-card.collapsed .prompt-preview-quote {
+    display: none;
+}
+.exam-prompt-card.collapsed .prompt-header-row {
+    margin-bottom: 0;
+}
+.btn-compact {
+    padding: 6px 12px;
+    font-size: 0.78rem;
 }
 
 .prompt-section {
@@ -1395,7 +1438,7 @@ details.warmup-fold[open] summary {
 }
 .prompt-header-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
@@ -1417,23 +1460,54 @@ details.warmup-fold[open] summary {
 .editor-section {
     background: var(--surface-card);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-subtle);
-    border: 1px solid var(--border-soft);
+    box-shadow: var(--shadow-card);
+    border: 1.5px solid var(--border-soft);
     display: flex;
     flex-direction: column;
-    flex: 1 0 420px;
-    min-height: 420px;
-    max-height: 68vh;
+    flex: 1 0 460px;
+    min-height: 440px;
+    max-height: 70vh;
     overflow: hidden;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
+.editor-section:focus-within {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-glow), var(--shadow-card);
+}
+
 .ql-toolbar.ql-snow {
     flex-shrink: 0;
     border: none !important;
     border-bottom: 1px solid var(--border-soft) !important;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    background: #fafbfc;
-    padding: 10px 16px !important;
+    background: #f8fafc;
+    padding: 10px 18px !important;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
 }
+.ql-toolbar.ql-snow .ql-formats {
+    margin-right: 10px !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+.ql-toolbar.ql-snow button,
+.ql-toolbar.ql-snow .ql-picker-label {
+    border-radius: 6px;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.ql-toolbar.ql-snow button:hover,
+.ql-toolbar.ql-snow .ql-picker-label:hover {
+    background: var(--primary-light) !important;
+    color: var(--primary) !important;
+}
+.ql-toolbar.ql-snow button.ql-active {
+    background: var(--primary-light) !important;
+    color: var(--primary) !important;
+}
+
 #editor {
     flex: 1;
     min-height: 0;
@@ -1441,31 +1515,38 @@ details.warmup-fold[open] summary {
     display: flex;
     flex-direction: column;
     border: none !important;
-    font-size: 1.02rem;
-    font-family: inherit;
-    line-height: 1.75;
+    font-size: 17px;
+    font-family: 'Times New Roman', Times, serif;
+    line-height: 1.8;
 }
 .ql-container.ql-snow {
     border: none !important;
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 17px;
 }
 .ql-editor {
     flex: 1;
     min-height: 0;
     height: auto !important;
     overflow-y: auto;
-    padding: 20px 24px;
-    line-height: 1.75;
+    padding: 26px 34px;
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 17px;
+    line-height: 1.8;
     color: var(--text-heading);
 }
 .ql-editor p {
-    margin-bottom: 0.75em;
+    margin-bottom: 0.8em;
 }
 .ql-editor p:last-child {
     margin-bottom: 0;
 }
 .ql-editor.ql-blank::before {
-    left: 24px;
-    right: 24px;
+    left: 34px;
+    right: 34px;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 0.94rem;
+    font-style: normal;
     color: var(--text-faint);
 }
 
@@ -1561,10 +1642,10 @@ details.warmup-fold[open] summary {
 .ql-snow .ql-picker.ql-font .ql-picker-label[data-value="tahoma"]::before,
 .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="tahoma"]::before { content: "Tahoma"; font-family: 'Tahoma', sans-serif; }
 .ql-snow .ql-picker.ql-font .ql-picker-label::before,
-.ql-snow .ql-picker.ql-font .ql-picker-item::before { content: "Mặc định"; }
+.ql-snow .ql-picker.ql-font .ql-picker-item::before { content: "Times New Roman"; font-family: 'Times New Roman', serif; }
 
 .ql-snow .ql-picker.ql-size .ql-picker-label::before,
-.ql-snow .ql-picker.ql-size .ql-picker-item::before { content: "14px"; }
+.ql-snow .ql-picker.ql-size .ql-picker-item::before { content: "16px"; }
 .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="10px"]::before,
 .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="10px"]::before { content: "10px"; }
 .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="12px"]::before,

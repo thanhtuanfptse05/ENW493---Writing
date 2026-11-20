@@ -48,22 +48,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function initQuill() {
     const FontStyle = Quill.import('attributors/style/font');
-    FontStyle.whitelist = ['arial', 'times-new-roman', 'courier-new', 'verdana', 'tahoma'];
+    FontStyle.whitelist = ['times-new-roman', 'arial', 'courier-new', 'verdana', 'tahoma'];
     Quill.register(FontStyle, true);
 
     const SizeStyle = Quill.import('attributors/style/size');
-    SizeStyle.whitelist = ['10px', '12px', '14px', '16px', '18px', '20px', '24px', '32px'];
+    SizeStyle.whitelist = ['12px', '14px', '16px', '18px', '20px', '24px', '32px'];
     Quill.register(SizeStyle, true);
 
     quill = new Quill('#editor', {
         theme: 'snow',
-        placeholder: 'Bắt đầu viết bài luận của bạn tại đây... (Hệ thống tự động lưu nháp mỗi 1 giây)',
+        placeholder: 'Bắt đầu viết bài luận của bạn tại đây (Mặc định: Times New Roman — tự động lưu nháp mỗi 1 giây)...',
         modules: {
             toolbar: [
                 [{ 'header': [1, 2, 3, false] }],
                 ['bold', 'italic', 'underline', 'strike'],
-                [{ 'font': FontStyle.whitelist }],
-                [{ 'size': SizeStyle.whitelist }],
+                [{ 'font': [false, 'arial', 'courier-new', 'verdana', 'tahoma'] }],
+                [{ 'size': [false, '12px', '14px', '18px', '20px', '24px', '32px'] }],
                 [{ 'color': [] }, { 'background': [] }],
                 [{ 'list': 'ordered' }, { 'list': 'bullet' }],
                 [{ 'align': [] }],
@@ -403,6 +403,17 @@ function setupEventListeners() {
         hintDrawer.classList.remove('open');
         document.body.classList.remove('hint-drawer-open');
     });
+
+    const toggleExamPromptBtn = document.getElementById('toggleExamPromptBtn');
+    const examPromptCard = document.getElementById('examPromptCard');
+    if (toggleExamPromptBtn && examPromptCard) {
+        toggleExamPromptBtn.addEventListener('click', () => {
+            const collapsed = examPromptCard.classList.toggle('collapsed');
+            toggleExamPromptBtn.innerHTML = collapsed
+                ? '<svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg><span>Hiện đề bài</span>'
+                : '<svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"></polyline></svg><span>Thu gọn đề</span>';
+        });
+    }
 }
 
 async function askAiWritingHint() {

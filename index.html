@@ -4,12 +4,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ENW493c Writing Studio Pro</title>
+    <title>ENW493c - Tuấn và Quân</title>
+    <link rel="icon" href="favicon.ico?v=2.4" type="image/x-icon">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.2">
+    <link rel="stylesheet" href="style.css?v=2.4">
 </head>
 
 <body>
@@ -19,17 +20,14 @@
             <div class="brand-header">
                 <a href="#" class="brand-logo" onclick="return false;">
                     <div class="logo-emblem">
-                        <svg class="icon icon-md" viewBox="0 0 24 24">
-                            <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
-                            <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
-                        </svg>
+                        <img src="tq-logo.png?v=2.4" alt="TQMaster Logo" class="brand-logo-img">
                     </div>
                     <div class="brand-info">
-                        <h1>ENW493c Studio</h1>
-                        <p>Luyện Viết & Leo Ải</p>
+                        <h1>ENW493c</h1>
+                        <p>Author: Tuấn và Quân</p>
                     </div>
                 </a>
-                <span class="version-tag">v2.2 Pro</span>
+                <span class="version-tag">v2.4 Pro</span>
             </div>
 
             <!-- Gamification Level & XP -->
@@ -186,10 +184,16 @@
 
                 <!-- Mode 2: Exam Mode (Full Essay Writing + AI Grader) -->
                 <div id="examModeContainer" class="exam-mode-container" style="display: none;">
-                    <div class="prompt-section">
+                    <div class="exam-prompt-card" id="examPromptCard">
                         <div class="prompt-header-row">
-                            <h2 id="currentQTitle">Đề bài</h2>
-                            <div id="currentQMeta" class="prompt-meta-pills"></div>
+                            <div>
+                                <div id="currentQMeta" class="prompt-meta-pills"></div>
+                                <h2 id="currentQTitle">Đề bài</h2>
+                            </div>
+                            <button type="button" id="toggleExamPromptBtn" class="btn-outline btn-compact">
+                                <svg class="icon icon-sm" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                                <span>Thu gọn đề</span>
+                            </button>
                         </div>
                         <div id="promptContent" class="prompt-preview-quote">
                             Vui lòng chọn một đề bài bên cột trái.
@@ -289,11 +293,11 @@
     <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
-    <script src="questions.js?v=2.2"></script>
-    <script src="ai-service.js?v=2.2"></script>
-    <script src="quest-mode.js?v=2.2"></script>
-    <script src="app.js?v=2.2"></script>
-    <script src="knowledge.js?v=2.2"></script>
+    <script src="questions.js?v=2.3"></script>
+    <script src="ai-service.js?v=2.3"></script>
+    <script src="quest-mode.js?v=2.3"></script>
+    <script src="app.js?v=2.3"></script>
+    <script src="knowledge.js?v=2.3"></script>
 </body>
 
 </html>
