@@ -1,25 +1,18 @@
 const POTENTIAL_MODELS = [
-    // Thế hệ 4.x / 3.x - mới nhất
-    "gemini-4-hydrogen",
+    // Nhanh & ổn định nhất (đã kiểm chứng 200 OK ~1.5-3.5s)
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
+    // Thế hệ 3.x / 4.x mới
     "gemini-3.8-flash",
     "gemini-3.7-flash",
-    "gemini-3.6-flash",
+    "gemini-4-hydrogen",
     "gemini-3.5-flash",
-    "gemini-3.5-flash-lite",
     "gemini-3.1-pro-preview",
-    "gemini-3.1-flash-image",
-    "gemini-3.1-flash-lite",
-    "gemini-3-flash-preview",
-    // Thế hệ 2.5
-    "gemini-2.5-pro",
+    // Dự phòng
+    "gemini-flash-latest",
     "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    // Thế hệ 2.0
-    "gemini-2.0-flash-exp",
-    "gemini-2.0-pro-exp",
-    // Thế hệ 1.5 (fallback ổn định nhất)
-    "gemini-1.5-pro",
-    "gemini-1.5-flash"
+    "gemini-2.5-pro"
 ];
 
 const ESSAY_GRADER_SYSTEM_PROMPT = `Bạn là một chuyên gia chấm bài IELTS/TOEFL Writing chuyên nghiệp và nghiêm khắc. Nhiệm vụ của bạn là chấm điểm và nhận xét chi tiết một bài luận tiếng Anh dựa trên Đề bài (Prompt) được cung cấp.
@@ -140,9 +133,11 @@ async function parseJsonSafe(response) {
 }
 
 function buildApiError(response, data, fallbackMsg) {
+    const rawCode = data?.error?.code;
+    const numericStatus = typeof rawCode === 'number' ? rawCode : response.status;
     return {
         ok: false,
-        status: data?.error?.code || response.status,
+        status: numericStatus || 500,
         errorMsg: data?.error?.message || fallbackMsg
     };
 }
@@ -184,7 +179,7 @@ function extractInteractionsText(data) {
     return '';
 }
 
-async function callGenerateContent(model, key, systemPrompt, userPrompt, temperature = 0.3) {
+async function callGenerateContent(model, key, systemPrompt, userPrompt, temperature = 0.3, timeoutMs = API_TIMEOUT_MS) {
     const generationConfig = { temperature };
     if (isHydrogenModel(model)) {
         generationConfig.thinkingConfig = { thinkingLevel: 'low' };
@@ -203,7 +198,8 @@ async function callGenerateContent(model, key, systemPrompt, userPrompt, tempera
                 contents: [{ parts: [{ text: userPrompt }] }],
                 generationConfig
             })
-        }
+        },
+        timeoutMs
     );
 
     const data = await parseJsonSafe(response);
@@ -217,10 +213,19 @@ async function callGenerateContent(model, key, systemPrompt, userPrompt, tempera
     return buildApiError(response, data, 'Lỗi không xác định từ API');
 }
 
-async function callInteractionsApi(model, key, systemPrompt, userPrompt, temperature = 0.3) {
-    const generationConfig = { temperature };
+async function callInteractionsApi(model, key, systemPrompt, userPrompt, temperature = 0.3, timeoutMs = API_TIMEOUT_MS) {
+    // Note: /v1beta/interactions can hang when top-level system_instruction/temperature is sent;
+    // fold systemPrompt directly into input for reliable fast responses.
+    const combinedInput = systemPrompt
+        ? `${systemPrompt}\n\n---\n\n${userPrompt}`
+        : userPrompt;
+
+    const payload = {
+        model,
+        input: combinedInput
+    };
     if (isHydrogenModel(model)) {
-        generationConfig.thinking_level = 'low';
+        payload.generation_config = { thinking_level: 'low' };
     }
 
     const response = await fetchWithTimeout('https://generativelanguage.googleapis.com/v1beta/interactions', {
@@ -229,13 +234,8 @@ async function callInteractionsApi(model, key, systemPrompt, userPrompt, tempera
             'Content-Type': 'application/json',
             'x-goog-api-key': key
         },
-        body: JSON.stringify({
-            model,
-            system_instruction: systemPrompt,
-            input: userPrompt,
-            generation_config: generationConfig
-        })
-    });
+        body: JSON.stringify(payload)
+    }, timeoutMs);
 
     const data = await parseJsonSafe(response);
     if (response.ok) {
@@ -248,15 +248,29 @@ async function callInteractionsApi(model, key, systemPrompt, userPrompt, tempera
     return buildApiError(response, data, 'Lỗi không xác định từ Interactions API');
 }
 
-async function requestModelCall(model, key, systemPrompt, userPrompt, temperature = 0.3, onStatusUpdate, keyIndex = 0) {
-    const primaryRes = await callGenerateContent(model, key, systemPrompt, userPrompt, temperature);
+async function requestModelCall(model, key, systemPrompt, userPrompt, temperature = 0.3, onStatusUpdate, keyIndex = 0, timeoutMs = API_TIMEOUT_MS) {
+    // Hydrogen / Gemini 4 models work directly via /v1beta/interactions (while :generateContent can hang)
+    if (isHydrogenModel(model)) {
+        if (typeof onStatusUpdate === 'function') {
+            onStatusUpdate(`Đang gọi Interactions API: ${model} (Key ${keyIndex + 1})...`);
+        }
+        const interRes = await callInteractionsApi(model, key, systemPrompt, userPrompt, temperature, timeoutMs);
+        if (interRes.ok) return interRes;
+
+        if (interRes.status === 404 || interRes.status === 400) {
+            return callGenerateContent(model, key, systemPrompt, userPrompt, temperature, timeoutMs);
+        }
+        return interRes;
+    }
+
+    const primaryRes = await callGenerateContent(model, key, systemPrompt, userPrompt, temperature, timeoutMs);
     if (primaryRes.ok) return primaryRes;
 
     if (primaryRes.status === 404 || primaryRes.status === 400 || primaryRes.status === 401) {
         if (typeof onStatusUpdate === 'function') {
             onStatusUpdate(`Đang thử Interactions API cho ${model} (Key ${keyIndex + 1})...`);
         }
-        const fallbackRes = await callInteractionsApi(model, key, systemPrompt, userPrompt, temperature);
+        const fallbackRes = await callInteractionsApi(model, key, systemPrompt, userPrompt, temperature, timeoutMs);
         if (fallbackRes.ok) return fallbackRes;
         if (primaryRes.status === 404) return fallbackRes;
     }
@@ -290,6 +304,7 @@ async function callGeminiWithRotation({ systemPrompt, userPrompt, temperature = 
             ? [workingModel, ...POTENTIAL_MODELS.filter(m => m !== workingModel)]
             : POTENTIAL_MODELS);
 
+    const perCallTimeout = isCustomMode ? API_TIMEOUT_MS : 20000;
     let errorMsg = '';
 
     for (let i = 0; i < keys.length; i++) {
@@ -299,7 +314,7 @@ async function callGeminiWithRotation({ systemPrompt, userPrompt, temperature = 
                 onStatusUpdate(`${isCustomMode ? 'Đang gọi' : 'Đang thử'} Model: ${m} (Key ${i + 1})`);
             }
             try {
-                const res = await requestModelCall(m, key, systemPrompt, userPrompt, temperature, onStatusUpdate, i);
+                const res = await requestModelCall(m, key, systemPrompt, userPrompt, temperature, onStatusUpdate, i, perCallTimeout);
                 if (res.ok) {
                     if (!isCustomMode) {
                         localStorage.setItem('workingModel', m);
@@ -313,16 +328,25 @@ async function callGeminiWithRotation({ systemPrompt, userPrompt, temperature = 
                 }
 
                 errorMsg = res.errorMsg;
-                if (res.status === 404) {
-                    continue;
-                } else if (res.status === 400 || res.status === 401 || res.status === 403 || res.status === 429) {
+                // Auth / bad key errors -> switch to next key immediately
+                if (res.status === 401 || res.status === 403 || (!isCustomMode && res.status === 400 && /API key/i.test(errorMsg))) {
                     break;
                 }
+                // In custom mode, 429/503/400 can try next key; in auto-detect mode, try next model first
+                if (isCustomMode && (res.status === 400 || res.status === 429)) {
+                    break;
+                }
+                // Otherwise (404, 503 overloaded, model-specific 429) -> continue to next model
             } catch (e) {
                 errorMsg = e.message || 'Lỗi kết nối mạng';
-                break;
+                // If custom mode, move to next key; if auto-detect mode, try next model on timeout
+                if (isCustomMode) break;
             }
         }
+    }
+
+    if (isCustomMode && /Hết thời gian chờ|high demand|unavailable|503/i.test(errorMsg)) {
+        errorMsg += ' — Gợi ý: Máy chủ Google cho model này đang quá tải/nghẽn. Hãy xóa trống ô "Model chỉ định" để hệ thống tự dùng gemini-3-flash-preview (~1–2s), hoặc nhập "gemini-3-flash-preview".';
     }
 
     return {
