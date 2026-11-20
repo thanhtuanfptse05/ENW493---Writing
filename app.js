@@ -1,67 +1,22 @@
-const questions = [
-    {
-        id: 1,
-        title: "Question 1 - Culinary Traditions",
-        content: `Writing topic\n\nThe growing presence of Western fast food chains has changed local eating habits and culinary traditions. Nevertheless, measures can be taken to counter this impact and encourage the preservation of traditional diets.\n\nWrite an essay (350–400 words) explaining the causes behind the spread of Western fast food and suggesting solutions that help preserve and promote local culinary traditions.`
-    },
-    {
-        id: 2,
-        title: "Question 2 - University Rankings",
-        content: `Writing topic\n\nUniversity rankings frequently influence where students choose to apply and enroll. However, they may not always be the best indicator of academic quality.\n\nWrite an essay (350-400 words) discussing how university rankings affect students' application and enrollment choices, and whether they can be considered a reliable measure of academic quality.`
-    },
-    {
-        id: 3,
-        title: "Question 3 - Internet Technology",
-        content: `WRITING QUESTION\n\nTime: 60 minutes\n\nWrite a 450-500 word essay responding to the question below:\n\nThe advancement of Internet technology means people do not need to travel to foreign countries to understand how people in other places live.\n\nTo what extent do you agree or disagree?`
-    },
-    {
-        id: 4,
-        title: "Question 4 - Career vs Education",
-        content: `Time: 60 minutes\n\nWrite an essay of 450-500 words in response to the question below:\n\nSome people think that a university degree leads to better job opportunities and higher income, others think that getting a job right after high school leads to quicker financial independence.\n\nDiscuss both views and give your opinion.`
-    },
-    {
-        id: 5,
-        title: "Question 5 - Environment",
-        content: `Time: 60 minutes\n\nWriting Task\n\nWrite a 450-500-word essay responding to the following question:\n\nSome people think that all university students should be required to participate in environmental protection projects in their free time. They believe this would benefit both the individual student and society as a whole.\n\nDo you agree or disagree?`
-    },
-    {
-        id: 6,
-        title: "Question 6 - Work from Home",
-        content: `Time: 60 minutes.\n\nCompose an essay of 450-500 words to address the question below:\n\nIn several countries, a growing number of young people are opting to work from home rather than going to the office.\n\nDo the advantages of this trend outweigh the disadvantages?`
-    },
-    {
-        id: 7,
-        title: "Question 7 - Success Factors",
-        content: `ESSAY\n\nTime: 60 minutes.\n\nCompose an essay of 450-500 words responding to the question below:\n\nMany people believe that good planning is the key factor to success in life, while hard work and supportive relationships are important.\n\nDiscuss both views and give your opinion.`
-    },
-    {
-        id: 8,
-        title: "Question 8 - Taking Risks",
-        content: `Time: 60 minutes\nWrite an essay of 350–400 words to answer the following question:\n\nIt is important to take risks in both their professional and personal lives. Do you think the advantages of taking risks outweigh the disadvantages?\n\nGive reasons for your answer and include any relevant examples from your own knowledge or experience.`
-    },
-    {
-        id: 9,
-        title: "Question 9 - Competition vs Cooperation",
-        content: `Write an essay of 350–400 words to answer the following question:\n\nSome people think that competition at work, at school, and in daily life is a good thing. Others believe we should cooperate more rather than compete with each other.\n\nDiscuss both these views and give your own opinion.\n\nGive reasons for your answer and include any relevant examples from your own knowledge or experience.`
-    }
-];
-
 let currentQuestion = null;
+let currentMode = 'quest'; // 'quest' | 'exam'
+let currentFilter = 'ALL';
 let quill;
 let timerInterval;
 let timeLeft = 3600; // 60 minutes in seconds
+let draftSaveTimer = null;
+let isRestoringDraft = false;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     initQuill();
-    initQuestionList();
+    initFrameworkFilter();
+    renderQuestionList();
     initTimer();
     setupEventListeners();
-    
-    // Select first question by default
-    selectQuestion(1);
-    
-    // Load saved settings
+    refreshGamificationUI();
+
+    // Load saved AI settings
     const savedKeys = localStorage.getItem('apiKeys');
     const savedModel = localStorage.getItem('customModel');
     const modelInput = document.getElementById('modelInput');
@@ -76,6 +31,12 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
         details.setAttribute('open', '');
     }
+
+    // Select first question and default to Quest Mode
+    if (QUESTIONS_DATA.length > 0) {
+        selectQuestion(QUESTIONS_DATA[0].id);
+    }
+    switchAppMode('quest');
 });
 
 function initQuill() {
@@ -89,7 +50,7 @@ function initQuill() {
 
     quill = new Quill('#editor', {
         theme: 'snow',
-        placeholder: 'Bắt đầu viết bài luận của bạn tại đây...',
+        placeholder: 'Bắt đầu viết bài luận của bạn tại đây... (Hệ thống tự động lưu nháp mỗi 1 giây)',
         modules: {
             toolbar: [
                 [{ 'header': [1, 2, 3, false] }],
@@ -97,59 +58,251 @@ function initQuill() {
                 [{ 'font': FontStyle.whitelist }],
                 [{ 'size': SizeStyle.whitelist }],
                 [{ 'color': [] }, { 'background': [] }],
-                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
                 [{ 'align': [] }],
                 ['clean']
             ]
         }
     });
 
-    // Tắt gạch chân đỏ (spellcheck) của trình duyệt
     quill.root.setAttribute('spellcheck', false);
 
     quill.on('text-change', () => {
-        const text = quill.getText().trim();
-        // Accurate word count handling multiple spaces and newlines
-        const wordCount = text.length > 0 ? text.replace(/\n/g, " ").split(/\s+/).filter(w => w.length > 0).length : 0;
-        document.getElementById('wordCount').innerText = wordCount + ' từ';
+        updateWordCount();
+        if (!isRestoringDraft) {
+            scheduleDraftSave();
+        }
     });
 }
 
-function initQuestionList() {
+function updateWordCount() {
+    const text = quill.getText().trim();
+    const wordCount = text.length > 0 ? text.replace(/\n/g, ' ').split(/\s+/).filter(w => w.length > 0).length : 0;
+    const badge = document.getElementById('wordCount');
+    if (!badge) return;
+
+    badge.classList.remove('wc-low', 'wc-good', 'wc-high');
+    if (currentQuestion) {
+        const minW = currentQuestion.minWords || 350;
+        const maxW = currentQuestion.maxWords || 400;
+        badge.innerText = `${wordCount} / ${minW}–${maxW} từ`;
+        if (wordCount === 0) {
+            badge.classList.add('wc-low');
+        } else if (wordCount < minW) {
+            badge.classList.add('wc-low');
+        } else if (wordCount <= maxW + 50) {
+            badge.classList.add('wc-good');
+        } else {
+            badge.classList.add('wc-high');
+        }
+    } else {
+        badge.innerText = `${wordCount} từ`;
+    }
+}
+
+function scheduleDraftSave() {
+    if (!currentQuestion) return;
+    const statusEl = document.getElementById('draftSaveStatus');
+    if (statusEl) statusEl.innerText = 'Đang lưu...';
+
+    if (draftSaveTimer) clearTimeout(draftSaveTimer);
+    const qId = currentQuestion.id;
+    draftSaveTimer = setTimeout(() => {
+        const plainText = quill.getText().trim();
+        if (plainText.length === 0) {
+            localStorage.removeItem(`draft_q_${qId}`);
+            if (statusEl) statusEl.innerText = '';
+        } else {
+            localStorage.setItem(`draft_q_${qId}`, quill.root.innerHTML);
+            if (statusEl) statusEl.innerText = '✓ Đã lưu nháp';
+        }
+        renderQuestionList();
+    }, 1000);
+}
+
+function loadDraftForQuestion(qId) {
+    if (!quill) return;
+    if (draftSaveTimer) {
+        clearTimeout(draftSaveTimer);
+        draftSaveTimer = null;
+    }
+    const savedDraft = localStorage.getItem(`draft_q_${qId}`);
+    const statusEl = document.getElementById('draftSaveStatus');
+
+    isRestoringDraft = true;
+    if (savedDraft) {
+        quill.root.innerHTML = savedDraft;
+        if (statusEl) statusEl.innerText = '✓ Đã tải nháp';
+    } else {
+        quill.setText('');
+        if (statusEl) statusEl.innerText = '';
+    }
+    isRestoringDraft = false;
+    updateWordCount();
+}
+window.loadDraftForQuestion = loadDraftForQuestion;
+
+function initFrameworkFilter() {
+    const filterContainer = document.getElementById('frameworkFilter');
+    if (!filterContainer) return;
+    filterContainer.querySelectorAll('.filter-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+            currentFilter = btn.dataset.fw || 'ALL';
+            filterContainer.querySelectorAll('.filter-chip').forEach(b => {
+                b.classList.toggle('active', b === btn);
+            });
+            renderQuestionList();
+        });
+    });
+}
+
+function renderQuestionList() {
     const qList = document.getElementById('qList');
-    questions.forEach(q => {
+    if (!qList) return;
+    qList.innerHTML = '';
+
+    const filtered = currentFilter === 'ALL'
+        ? QUESTIONS_DATA
+        : QUESTIONS_DATA.filter(q => q.framework === currentFilter);
+
+    filtered.forEach(q => {
         const li = document.createElement('li');
-        li.innerText = q.title;
-        li.onclick = () => selectQuestion(q.id);
         li.dataset.id = q.id;
+        if (currentQuestion && currentQuestion.id === q.id) {
+            li.classList.add('active');
+        }
+        const statusInfo = getQuestionStatusIcon(q.id);
+        li.innerHTML = `
+            <span class="q-item-left">
+                <span class="q-fw-badge fw-${q.framework}">${q.framework}</span>
+                <span class="q-item-title">${escapeHtml(q.title)}</span>
+            </span>
+            <span class="q-status-icon" title="${statusInfo.status}">${statusInfo.icon}</span>
+        `;
+        li.onclick = () => selectQuestion(q.id);
         qList.appendChild(li);
     });
 }
 
+function refreshGamificationUI() {
+    const progress = loadProgress();
+    const total = QUESTIONS_DATA.length;
+    const passedCount = QUESTIONS_DATA.filter(q => progress.questions[String(q.id)]?.passed).length;
+    const percent = total > 0 ? Math.round((passedCount / total) * 100) : 0;
+
+    const xpEl = document.getElementById('xpValue');
+    const rankEl = document.getElementById('rankBadge');
+    const textEl = document.getElementById('progressText');
+    const pctEl = document.getElementById('progressPercent');
+    const fillEl = document.getElementById('progressBarFill');
+
+    if (xpEl) xpEl.innerText = progress.xp;
+    if (rankEl) rankEl.innerText = getRankLabel(progress.xp);
+    if (textEl) textEl.innerText = `Đã chinh phục: ${passedCount}/${total} đề`;
+    if (pctEl) pctEl.innerText = `${percent}%`;
+    if (fillEl) fillEl.style.width = `${percent}%`;
+
+    renderQuestionList();
+}
+window.refreshGamificationUI = refreshGamificationUI;
+
 function selectQuestion(id) {
-    currentQuestion = questions.find(q => q.id === id);
+    currentQuestion = QUESTIONS_DATA.find(q => q.id === id);
     if (!currentQuestion) return;
 
-    // Update UI
     document.querySelectorAll('#qList li').forEach(li => {
-        li.classList.toggle('active', li.dataset.id == id);
+        li.classList.toggle('active', Number(li.dataset.id) === id);
     });
 
+    // Update Exam prompt area
     document.getElementById('currentQTitle').innerText = currentQuestion.title;
+    const metaEl = document.getElementById('currentQMeta');
+    if (metaEl) {
+        metaEl.innerHTML = `
+            <span class="framework-pill fw-${currentQuestion.framework}">Khung ${currentQuestion.framework}: ${escapeHtml(currentQuestion.frameworkName)}</span>
+            <span class="word-target-pill">${currentQuestion.minWords}–${currentQuestion.maxWords} từ</span>
+        `;
+    }
     document.getElementById('promptContent').innerText = currentQuestion.content;
-    
-    // Load cached feedback for this question if exists
+
+    // Load draft & cached feedback for this question
+    loadDraftForQuestion(id);
     const savedQid = localStorage.getItem('savedFeedbackQid');
     const savedFeedback = localStorage.getItem('savedFeedback');
     const inlineResult = document.getElementById('inlineResultSection');
-    
-    if (savedQid == id && savedFeedback) {
+
+    if (Number(savedQid) === id && savedFeedback) {
         inlineResult.style.display = 'block';
         document.getElementById('resultContent').innerHTML = savedFeedback;
     } else {
         inlineResult.style.display = 'none';
     }
+
+    const hintBox = document.getElementById('aiHintBox');
+    if (hintBox) hintBox.style.display = 'none';
+
+    // Update Quest Mode & Hint Drawer
+    QuestMode.initForQuestion(currentQuestion);
+    renderHintDrawer();
 }
+
+function renderHintDrawer() {
+    const body = document.getElementById('hintDrawerBody');
+    if (!body || !currentQuestion) return;
+    const q = currentQuestion;
+    const fwInfo = FRAMEWORKS_META[q.framework] || {};
+
+    const vocabItems = (q.quickHints?.vocab || []).map(v => `<li>${escapeHtml(v)}</li>`).join('');
+    const b1Items = (q.quickHints?.body1Vi || []).map(v => `<li>${escapeHtml(v)}</li>`).join('');
+    const b2Items = (q.quickHints?.body2Vi || []).map(v => `<li>${escapeHtml(v)}</li>`).join('');
+
+    body.innerHTML = `
+        <div class="drawer-section">
+            <span class="framework-pill fw-${q.framework}">Khung ${q.framework}: ${escapeHtml(q.frameworkName)}</span>
+            <p class="drawer-desc">${escapeHtml(fwInfo.vi || '')}</p>
+            ${q.quickHints?.stance ? `<div class="drawer-stance"><strong>🧭 Chiến thuật:</strong> ${escapeHtml(q.quickHints.stance)}</div>` : ''}
+        </div>
+        <div class="drawer-section">
+            <h4>📝 Thân bài 1 (Ý chính)</h4>
+            <ul>${b1Items}</ul>
+        </div>
+        <div class="drawer-section">
+            <h4>📝 Thân bài 2 (Ý chính)</h4>
+            <ul>${b2Items}</ul>
+        </div>
+        <div class="drawer-section">
+            <h4>💎 Từ vựng ăn điểm</h4>
+            <ul class="vocab-list">${vocabItems}</ul>
+        </div>
+        <div class="drawer-section">
+            <h4>🔗 Từ nối nhanh</h4>
+            <p class="linking-mini">
+                <strong>Mở ý:</strong> One major reason is... / Firstly,<br>
+                <strong>Giải thích:</strong> This is because... / Consequently,<br>
+                <strong>Ví dụ:</strong> For instance, ... / For example,<br>
+                <strong>Tương phản:</strong> However, / On the other hand,<br>
+                <strong>Kết luận:</strong> In conclusion, / To sum up,
+            </p>
+        </div>
+    `;
+}
+
+function switchAppMode(mode) {
+    currentMode = mode === 'exam' ? 'exam' : 'quest';
+    const questBtn = document.getElementById('tabQuestMode');
+    const examBtn = document.getElementById('tabExamMode');
+    const questBox = document.getElementById('questModeContainer');
+    const examBox = document.getElementById('examModeContainer');
+
+    if (questBtn) questBtn.classList.toggle('active', currentMode === 'quest');
+    if (examBtn) examBtn.classList.toggle('active', currentMode === 'exam');
+    if (questBox) questBox.style.display = currentMode === 'quest' ? 'block' : 'none';
+    if (examBox) examBox.style.display = currentMode === 'exam' ? 'flex' : 'none';
+
+    const workspace = document.querySelector('.workspace');
+    if (workspace) workspace.scrollTop = 0;
+}
+window.switchAppMode = switchAppMode;
 
 function initTimer() {
     updateTimerDisplay();
@@ -164,7 +317,7 @@ function updateTimerDisplay() {
 function toggleTimer() {
     const btn = document.getElementById('startTimerBtn');
     const icon = btn.querySelector('i');
-    
+
     if (timerInterval) {
         clearInterval(timerInterval);
         timerInterval = null;
@@ -212,254 +365,98 @@ function setupEventListeners() {
         });
     }
 
+    document.getElementById('tabQuestMode').addEventListener('click', () => switchAppMode('quest'));
+    document.getElementById('tabExamMode').addEventListener('click', () => switchAppMode('exam'));
+
     document.getElementById('submitBtn').addEventListener('click', gradeEssay);
     document.getElementById('closeResultBtn').addEventListener('click', () => {
         document.getElementById('inlineResultSection').style.display = 'none';
         localStorage.removeItem('savedFeedback');
         localStorage.removeItem('savedFeedbackQid');
     });
-}
 
-const POTENTIAL_MODELS = [
-    // Thế hệ 4.x / 3.x - mới nhất
-    "gemini-4-hydrogen",
-    "gemini-3.8-flash",
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash",
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-pro-preview",
-    "gemini-3.1-flash-image",
-    "gemini-3.1-flash-lite",
-    "gemini-3-flash-preview",
-    // Thế hệ 2.5
-    "gemini-2.5-pro",
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    // Thế hệ 2.0
-    "gemini-2.0-flash-exp",
-    "gemini-2.0-pro-exp",
-    // Thế hệ 1.5 (fallback ổn định nhất)
-    "gemini-1.5-pro",
-    "gemini-1.5-flash"
-];
-
-/**
- * Normalizes a user-entered model identifier by trimming whitespace and surrounding quotes.
- */
-function normalizeModelName(raw) {
-    return (raw || '').trim().replace(/^["']|["']$/g, '').trim();
-}
-
-/**
- * Reads, normalizes, and persists the custom model name from the settings input.
- */
-function getCustomModel() {
-    const modelInput = document.getElementById('modelInput');
-    const model = modelInput ? normalizeModelName(modelInput.value) : '';
-    if (modelInput && modelInput.value !== model) {
-        modelInput.value = model;
-    }
-    localStorage.setItem('customModel', model);
-    return model;
-}
-
-function escapeHtml(str) {
-    return String(str).replace(/[&<>"']/g, ch => ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#39;'
-    }[ch]));
-}
-
-function getApiKeys() {
-    const keysStr = document.getElementById('apiKeys').value.trim();
-    localStorage.setItem('apiKeys', keysStr); // Save keys for next time
-
-    if (!keysStr) return [];
-    return keysStr.split('\n').map(k => k.trim()).filter(k => k.length > 0);
-}
-
-// Prompt Engineering for AI
-const systemPrompt = `Bạn là một chuyên gia chấm bài IELTS/TOEFL Writing chuyên nghiệp và nghiêm khắc. Nhiệm vụ của bạn là chấm điểm và nhận xét chi tiết một bài luận tiếng Anh dựa trên Đề bài (Prompt) được cung cấp.
-
-TRẢ VỀ KẾT QUẢ BẰNG MARKDOWN THEO ĐÚNG TRÌNH TỰ SAU, KHÔNG BỎ SÓT PHẦN NÀO:
-
----
-## 🏆 ĐIỂM TỔNG THỂ
-
-| Tiêu chí | Điểm | Nhận xét ngắn |
-|---|---|---|
-| **Task Achievement** | ?/10 | ... |
-| **Coherence & Cohesion** | ?/10 | ... |
-| **Lexical Resource** | ?/10 | ... |
-| **Grammar** | ?/10 | ... |
-| 🌟 **TỔNG ĐIỂM ƯỚC TÍNH** | **?.? / 10** *(IELTS Band ?.?)* | |
-
-> **Nhận xét chung:** (Tóm tắt 2-3 câu về bài viết, điểm mạnh nổi bật nhất và điểm yếu cần cải thiện nhất)
-
----
-## 📋 PHÂN TÍCH CHI TIẾT
-
-### 1. Task Achievement — ?/10
-(Phân tích cụ thể: bài có trả lời đúng đề không? Đủ độ dài không? Các luận điểm có được phát triển tốt không?)
-
-### 2. Coherence & Cohesion — ?/10
-(Phân tích cấu trúc đoạn văn, tính logic, sử dụng từ nối)
-
-### 3. Lexical Resource — ?/10
-(Phân tích vốn từ vựng: đa dạng chưa? Có sai collocation hay dùng lặp không?)
-
-### 4. Grammar — ?/10
-(Phân tích cấu trúc câu, độ đa dạng, các lỗi ngữ pháp mắc phải)
-
----
-## 🚨 LỖI SAI & SỬA LỖI
-
-(Liệt kê TỐI THIỂU 3 lỗi sai quan trọng nhất theo format):
-
-**Lỗi 1:**
-- ❌ **Câu sai:** "..."
-- ✅ **Sửa lại:** "..."
-- 💬 **Giải thích:** ...
-
-**Lỗi 2:**
-- ❌ **Câu sai:** "..."
-- ✅ **Sửa lại:** "..."
-- 💬 **Giải thích:** ...
-
----
-## 💡 GỢI Ý NÂNG CẤP
-
-**Từ vựng nâng cao (Advanced Vocabulary):**
-(Liệt kê 5 từ/cụm từ học sinh có thể dùng cho chủ đề này, kèm ví dụ)
-
-**Câu nâng cấp mẫu:**
-(Lấy 1-2 câu trong bài, viết lại ở cấp độ nâng cao hơn)
-
-LƯU Ý: Không bao giờ thay đổi đề bài gốc. Nếu bài viết dưới 100 từ hoặc lạc đề hoàn toàn, cho điểm thấp và cảnh báo rõ.`;
-
-
-/**
- * Extracts text from a /v1beta/interactions JSON response.
- */
-function extractInteractionsText(data) {
-    if (typeof data?.output_text === 'string' && data.output_text.trim()) {
-        return data.output_text;
-    }
-    if (Array.isArray(data?.outputs)) {
-        const text = data.outputs
-            .filter(item => item && (item.type === 'text' || typeof item.text === 'string'))
-            .map(item => item.text || '')
-            .join('\n')
-            .trim();
-        if (text) return text;
-    }
-    return '';
-}
-
-async function parseJsonSafe(response) {
-    try {
-        return await response.json();
-    } catch {
-        return {};
-    }
-}
-
-function buildApiError(response, data, fallbackMsg) {
-    return {
-        ok: false,
-        status: data?.error?.code || response.status,
-        errorMsg: data?.error?.message || fallbackMsg
-    };
-}
-
-/**
- * Calls the standard Gemini generateContent endpoint.
- */
-async function callGenerateContent(model, key, userPrompt) {
-    const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
-        {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                system_instruction: { parts: [{ text: systemPrompt }] },
-                contents: [{ parts: [{ text: userPrompt }] }],
-                generationConfig: { temperature: 0.3 }
-            })
-        }
-    );
-
-    const data = await parseJsonSafe(response);
-    if (response.ok) {
-        const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
-        return text
-            ? { ok: true, text, endpoint: 'generateContent' }
-            : { ok: false, status: 500, errorMsg: 'API không trả về nội dung phản hồi.' };
-    }
-
-    return buildApiError(response, data, 'Lỗi không xác định từ API');
-}
-
-/**
- * Calls the Gemini Interactions API endpoint as a fallback for models requiring /v1beta/interactions.
- */
-async function callInteractionsApi(model, key, userPrompt) {
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': key
-        },
-        body: JSON.stringify({
-            model,
-            system_instruction: systemPrompt,
-            input: userPrompt,
-            generation_config: { temperature: 0.3 }
-        })
+    // Clear draft button
+    document.getElementById('clearDraftBtn').addEventListener('click', () => {
+        if (!currentQuestion) return;
+        if (quill.getText().trim().length === 0) return;
+        if (!confirm(`Bạn có chắc muốn xóa bài nháp của ${currentQuestion.code}?`)) return;
+        localStorage.removeItem(`draft_q_${currentQuestion.id}`);
+        isRestoringDraft = true;
+        quill.setText('');
+        isRestoringDraft = false;
+        const statusEl = document.getElementById('draftSaveStatus');
+        if (statusEl) statusEl.innerText = '';
+        updateWordCount();
+        renderQuestionList();
     });
 
-    const data = await parseJsonSafe(response);
-    if (response.ok) {
-        const text = extractInteractionsText(data);
-        return text
-            ? { ok: true, text, endpoint: 'interactions' }
-            : { ok: false, status: 500, errorMsg: 'Interactions API không trả về nội dung văn bản.' };
-    }
+    // AI Writing Hint ("Cứu bí ý")
+    document.getElementById('aiHintBtn').addEventListener('click', askAiWritingHint);
+    document.getElementById('closeAiHintBtn').addEventListener('click', () => {
+        document.getElementById('aiHintBox').style.display = 'none';
+    });
 
-    return buildApiError(response, data, 'Lỗi không xác định từ Interactions API');
+    // Slide-in Hint Drawer
+    const hintDrawer = document.getElementById('hintDrawer');
+    document.getElementById('toggleHintDrawerBtn').addEventListener('click', () => {
+        const isOpen = hintDrawer.classList.toggle('open');
+        document.body.classList.toggle('hint-drawer-open', isOpen);
+    });
+    document.getElementById('closeHintDrawerBtn').addEventListener('click', () => {
+        hintDrawer.classList.remove('open');
+        document.body.classList.remove('hint-drawer-open');
+    });
 }
 
-/**
- * Requests essay grading for a model, trying generateContent first and falling back to interactions on 404/400.
- */
-async function requestModelGrading(model, key, userPrompt) {
-    const primaryRes = await callGenerateContent(model, key, userPrompt);
-    if (primaryRes.ok) return primaryRes;
-
-    // Some models (or newer API tiers) only support /v1beta/interactions
-    if (primaryRes.status === 404 || primaryRes.status === 400) {
-        const fallbackRes = await callInteractionsApi(model, key, userPrompt);
-        if (fallbackRes.ok) return fallbackRes;
-        if (primaryRes.status === 404) return fallbackRes;
+async function askAiWritingHint() {
+    if (!currentQuestion) return;
+    const keys = getApiKeys();
+    if (keys.length === 0) {
+        alert('Vui lòng nhập ít nhất một API Key của Gemini ở cột Cài đặt AI (bên trái)!');
+        document.getElementById('aiSettingsDetails').setAttribute('open', '');
+        return;
     }
 
-    return primaryRes;
+    const hintBox = document.getElementById('aiHintBox');
+    const hintContent = document.getElementById('aiHintContent');
+    const btn = document.getElementById('aiHintBtn');
+
+    hintBox.style.display = 'block';
+    btn.disabled = true;
+    hintContent.innerHTML = `<div class="inline-spinner"><i class="fa-solid fa-spinner fa-spin"></i> AI đang đọc bài viết dở và nghĩ ý tiếp theo...</div>`;
+    setTimeout(() => hintBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+
+    const res = await getWritingHintWithAI({
+        promptText: currentQuestion.content,
+        currentEssay: quill.getText().trim(),
+        onStatusUpdate: (msg) => {
+            hintContent.innerHTML = `<div class="inline-spinner"><i class="fa-solid fa-spinner fa-spin"></i> ${escapeHtml(msg)}</div>`;
+        }
+    });
+
+    btn.disabled = false;
+    if (res.ok) {
+        hintContent.innerHTML = marked.parse(res.text) + `<div class="ai-model-tag">Gợi ý bởi: ${escapeHtml(res.model)}</div>`;
+    } else {
+        hintContent.innerHTML = `<div class="alert-error">Không thể lấy gợi ý AI: ${escapeHtml(res.errorMsg)}</div>`;
+    }
 }
 
 async function gradeEssay() {
+    if (currentMode !== 'exam') {
+        switchAppMode('exam');
+    }
+
     const keys = getApiKeys();
     if (keys.length === 0) {
         alert('Vui lòng nhập ít nhất một API Key của Gemini ở cột Cài đặt (bên trái)!');
+        document.getElementById('aiSettingsDetails').setAttribute('open', '');
         return;
     }
 
     const text = quill.getText().trim();
     if (text.length < 20) {
-        alert('Bài viết quá ngắn. Vui lòng viết dài hơn để AI có thể chấm điểm.');
+        alert('Bài viết quá ngắn. Hãy viết bài vào khung soạn thảo trước khi bấm Chấm Điểm AI.');
         return;
     }
 
@@ -467,24 +464,14 @@ async function gradeEssay() {
     const customModel = getCustomModel();
     const isCustomMode = customModel.length > 0;
 
-    // When custom model is provided, use ONLY that model; otherwise auto-detect from memory + defaults
-    const workingModel = localStorage.getItem('workingModel');
-    const modelsToTry = isCustomMode
-        ? [customModel]
-        : (workingModel
-            ? [workingModel, ...POTENTIAL_MODELS.filter(m => m !== workingModel)]
-            : POTENTIAL_MODELS);
-    
-    // Show UI loading inline
     const resultSection = document.getElementById('inlineResultSection');
     const content = document.getElementById('resultContent');
     resultSection.style.display = 'block';
-    
-    // Auto scroll down to result section
+
     setTimeout(() => {
         resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 50);
-    
+
     content.innerHTML = `
         <div class="loader-container">
             <div class="spinner"></div>
@@ -494,69 +481,44 @@ async function gradeEssay() {
         </div>
     `;
 
-    const userPrompt = `
-Dưới đây là Đề bài (Prompt):
-----------------
-${promptText}
-----------------
+    const res = await gradeEssayWithAI(promptText, text, (statusMsg) => {
+        const indicator = document.getElementById('modelIndicator');
+        if (indicator) indicator.innerText = statusMsg;
+    });
 
-Dưới đây là bài luận của học sinh (Student's essay):
-----------------
-${text}
-----------------
+    if (res.ok) {
+        const parsedScore = parseScoreFromMarkdown(res.text);
+        const bossResult = recordBossFightResult(currentQuestion.id, parsedScore);
 
-Hãy chấm điểm và nhận xét dựa trên System Instructions.`;
-
-    // Implement Key Rotation: Try keys sequentially
-    let success = false;
-    let errorMsg = '';
-
-    keyLoop: for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
-        console.log(`Đang thử key thứ ${i + 1}/${keys.length}...`);
-        
-        for (let m of modelsToTry) {
-            document.getElementById('modelIndicator').innerText = `${isCustomMode ? 'Đang gọi' : 'Đang thử'} Model: ${m} (Key ${i + 1})`;
-            console.log(`Đang thử model: ${m} với key ${i + 1}`);
-            try {
-                const res = await requestModelGrading(m, key, userPrompt);
-
-                if (res.ok) {
-                    const finalHtml = marked.parse(res.text) + `<div style="margin-top: 20px; font-size: 0.8rem; color: #6b7280; padding-top: 10px; border-top: 1px solid #e5e7eb;">Chấm điểm bởi: <strong>${escapeHtml(m)}</strong></div>`;
-                    if (!isCustomMode) {
-                        localStorage.setItem('workingModel', m);
-                    }
-                    content.innerHTML = finalHtml;
-                    localStorage.setItem('savedFeedback', finalHtml);
-                    localStorage.setItem('savedFeedbackQid', currentQuestion.id);
-                    success = true;
-                    break keyLoop; // Successfully graded, exit both loops
-                } else {
-                    errorMsg = res.errorMsg;
-                    console.error(`Model ${m} (Key ${i + 1}) lỗi:`, errorMsg);
-                    
-                    if (res.status === 404) {
-                        // Model not found, continue to next model
-                        continue;
-                    } else if (res.status === 400 || res.status === 403 || res.status === 429) {
-                        // Key invalid, quota exceeded, or bad request -> Try next key
-                        break;
-                    }
-                }
-            } catch (e) {
-                console.error(`Key ${i + 1} lỗi mạng:`, e);
-                errorMsg = `Lỗi kết nối mạng: ${e.message}`;
-                break; // Try next key on network error
-            }
+        let bossBanner = '';
+        if (parsedScore !== null && parsedScore >= 6.0) {
+            bossBanner = `
+                <div class="boss-victory-banner">
+                    🎉 <strong>CHINH PHỤC BOSS THÀNH CÔNG!</strong> Điểm tổng: <strong>${parsedScore}/10</strong> (Đạt chuẩn ≥ 6.0)
+                    ${bossResult.gainedXp > 0 ? ` — Nhận thưởng <strong>+${bossResult.gainedXp} XP</strong> & Huy hiệu ✅!` : ' — Đã cập nhật kỷ lục điểm!'}
+                </div>
+            `;
+        } else if (parsedScore !== null) {
+            bossBanner = `
+                <div class="boss-retry-banner">
+                    ⚔️ Điểm lần này: <strong>${parsedScore}/10</strong> — Cần từ <strong>6.0/10</strong> để qua Ải Boss Fight. Xem lỗi sai bên dưới và sửa lại nhé!
+                </div>
+            `;
         }
-    }
 
-    if (!success) {
-        const modelNotice = isCustomMode
-            ? `<p><strong>Model đã chọn:</strong> <code>${escapeHtml(customModel)}</code></p>`
+        const finalHtml = bossBanner
+            + marked.parse(res.text)
+            + `<div style="margin-top: 20px; font-size: 0.8rem; color: #6b7280; padding-top: 10px; border-top: 1px solid #e5e7eb;">Chấm điểm bởi: <strong>${escapeHtml(res.model)}</strong></div>`;
+
+        content.innerHTML = finalHtml;
+        localStorage.setItem('savedFeedback', finalHtml);
+        localStorage.setItem('savedFeedbackQid', currentQuestion.id);
+    } else {
+        const modelNotice = res.isCustomMode
+            ? `<p><strong>Model đã chọn:</strong> <code>${escapeHtml(res.customModel)}</code></p>`
             : '';
-        const modelFixTip = isCustomMode
-            ? `<li>Kiểm tra lại tên model <code>${escapeHtml(customModel)}</code> xem có gõ đúng không (VD: <code>gemini-4-hydrogen</code>, <code>gemini-3.8-flash</code>), hoặc xóa trống ô Model để hệ thống tự dò.</li>`
+        const modelFixTip = res.isCustomMode
+            ? `<li>Kiểm tra lại tên model <code>${escapeHtml(res.customModel)}</code> xem có gõ đúng không (VD: <code>gemini-4-hydrogen</code>, <code>gemini-3.8-flash</code>), hoặc xóa trống ô Model để hệ thống tự dò.</li>`
             : '';
         content.innerHTML = `
             <div style="color: #991b1b; padding: 24px; background: #fee2e2; border-radius: 8px; border-left: 4px solid #ef4444;">
@@ -565,7 +527,7 @@ Hãy chấm điểm và nhận xét dựa trên System Instructions.`;
                 </h3>
                 <p>Không thể kết nối với API bằng các Key được cung cấp.</p>
                 ${modelNotice}
-                <p><strong>Chi tiết lỗi từ máy chủ:</strong> ${escapeHtml(errorMsg)}</p>
+                <p><strong>Chi tiết lỗi từ máy chủ:</strong> ${escapeHtml(res.errorMsg)}</p>
                 <hr style="border-color: #fca5a5; margin: 16px 0;">
                 <p><strong>Gợi ý cách khắc phục:</strong></p>
                 <ul style="margin-bottom: 0;">

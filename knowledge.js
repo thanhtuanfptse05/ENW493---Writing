@@ -245,6 +245,24 @@ Cho View 2, mở bằng: ***On the other hand,** others believe that...*
 | Ví dụ | For instance, / For example, / A case in point is... | Ví dụ |
 | Kết luận | In conclusion, / To sum up, / Overall, | Tóm lại |
 | Nêu ý kiến | In my opinion, / I firmly believe that... | Theo tôi |
+
+---
+
+## BỘ Ý TƯỞNG NHANH CHO 11 ĐỀ MỚI (Q10 – Q20)
+
+| Mã đề | Khung | Độ dài | Gợi ý hướng triển khai nhanh (Thân 1 • Thân 2) | Từ vựng ăn điểm |
+|---|---|---|---|---|
+| **Q10** - Smartphone Overuse | **A** | 350–400 | **Causes:** Thuật toán gây nghiện + FOMO • **Solutions:** Lập phone-free zones + hoạt động CLB offline | *addictive algorithms*, *phone-free zones*, *genuine connections* |
+| **Q11** - Brain Drain | **A** | 450–500 | **Causes:** Chênh lệch lương/mức sống + thiếu môi trường nghiên cứu • **Solutions:** Ưu đãi thuế/nghiên cứu + khu công nghệ | *skilled professionals*, *career progression*, *innovation ecosystem* |
+| **Q12** - AI in University | **B** | 350–400 | **Ảnh hưởng:** Gia sư 24/7 vs ỷ lại giảm tư duy • **Tích cực/Tiêu cực:** Tích cực nếu dạy dùng có đạo đức & đổi cách thi | *personal tutor*, *over-reliance*, *academic integrity* |
+| **Q13** - Cashless Society | **B** | 450–500 | **Nguyên nhân:** Tiện lợi QR/TMĐT + minh bạch tài chính • **Rủi ro:** Lừa đảo mạng, người già khó tiếp cận, tiêu quá tay | *e-commerce boom*, *cybersecurity threats*, *social exclusion* |
+| **Q14** - Soft vs Hard Skills | **C** | 450–500 | **Partly agree:** Kỹ năng cứng là nền tảng vào nghề (bác sĩ/kỹ sư), kỹ năng mềm giúp phối hợp và thăng tiến quản lý | *interpersonal skills*, *technical expertise*, *non-negotiable foundation* |
+| **Q15** - Public Transport | **C** | 350–400 | **Strongly agree:** Metro/buýt giảm kẹt xe & ô nhiễm (Tokyo, Singapore); giúp sinh viên/người thu nhập thấp đi lại công bằng | *public transit*, *traffic congestion*, *livable cities* |
+| **Q16** - Online vs Traditional | **D** | 450–500 | **Online:** Linh hoạt, tiết kiệm tiền trọ • **Lớp truyền thống:** Kỷ luật, thực hành thí nghiệm • **Opinion:** Blended learning | *unmatched flexibility*, *face-to-face instruction*, *blended learning* |
+| **Q17** - Gap Year | **D** | 350–400 | **Gap year:** Trưởng thành, tránh chọn sai ngành • **Vào thẳng:** Giữ đà học & tốt nghiệp sớm • **Opinion:** Tốt nếu có kế hoạch rõ | *gain maturity*, *academic momentum*, *direct enrollment* |
+| **Q18** - Freelance vs Office | **E** | 450–500 | **Ưu:** Tự do giờ giấc, thu nhập không trần • **Nhược:** Bấp bênh, thiếu bảo hiểm • **Phản biện:** Quỹ dự phòng & hợp đồng dài hạn | *nine-to-five job*, *income instability*, *gig economy* |
+| **Q19** - Historic Tourism | **E** | 350–400 | **Ưu:** Việc làm (Hội An) & vốn trùng tu di sản • **Nhược:** Quá tải, rác, giá nhà tăng • **Phản biện:** Giới hạn khách/ngày & phí bảo tồn | *booming tourism*, *overcrowding*, *sustainable policies* |
+| **Q20** - Academic Stress | **A** | 350–400 | **Causes:** Khối lượng học nặng + kỳ vọng & áp lực đồng trang lứa • **Solutions:** Tư vấn tâm lý miễn phí + quản lý thời gian | *student well-being*, *peer pressure*, *counselling services* |
 `;
 
 document.addEventListener('DOMContentLoaded', () => {
